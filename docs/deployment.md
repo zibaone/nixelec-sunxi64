@@ -34,9 +34,10 @@ Use a cold power cycle after flashing. Do not overwrite the SPI without a
 verified backup. The reference board now carries a **mainline U-Boot fallback**
 in SPI (offset **0**; 8 KiB is the SD offset): a warm reset that the BootROM
 sends to SPI boots the SD card instead of the vendor 2018.05 image. Validated on
-2026-10-25 with 8/8 `systemctl reboot`; Kodi and WiFi came back without a cold
-boot. Keep a cold-bootable SD, the SPI backup, and test the restore path before
-changing the image.
+2026-10-25 with 8/8 `systemctl reboot` and a cold boot; Kodi and WiFi came back.
+The CMD0 shutdown hook did not prevent the fallback and is disabled. Keep a
+cold-bootable SD, the SPI backup, and test the restore path before changing the
+image.
 
 ```bash
 # Backup the whole 16 MiB SPI (read-only), before any write
