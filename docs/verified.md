@@ -32,7 +32,8 @@ That pin is one CI commit before `v0.4.0` and carries both sunxi audio patches
 | Check | Command / observation | Status |
 |---|---|---|
 | U-Boot boot | `U-Boot` banner on `ttyS0` | cold boot on the reference board uses the nixbian U-Boot from the SD. Warm reset validated on 2026-10-25 through the mainline SPI fallback; not replayed with this image alone |
-| SPI fallback U-Boot | `flashcp` at offset 0 + readback `cmp` | written on the reference board on 2026-10-25 (nixbian v2025.04, sha256 `e40d4657…`); 8/8 warm resets returned with Kodi/WiFi up; cold boot not replayed after the write |
+| SPI fallback U-Boot | `flashcp` at offset 0 + readback `cmp` | written on the reference board on 2026-10-25 (nixbian v2025.04, sha256 `e40d4657…`); 8/8 warm resets and a cold boot returned with Kodi/WiFi up |
+| CMD0 shutdown hook | warm reset + UART | tested on the reference board on 2026-10-25: negative, the BootROM still fell back to SPI (`Trying to boot from sunxi SPI`); hook disabled in the reference consumer |
 | GPU | `/dev/dri/renderD128` present | present on the reference board (panfrost); not replayed with this image |
 | HDMI audio | `cat /proc/asound/card*/pcm0p/info` -> `i2s-hifi` | validated on the reference board on 2026-10-24 with kernel `dsrz3rnrb` and this DTB; not replayed with this image. The wireplumber `ccu_helper_wait_for_lock` warning was analyzed as a benign second-open race on the single-stream HDMI codec |
 | AHUB clock | 48 kHz playback not slowed down | validated on the reference board on 2026-10-24 (`audio-hub` 49.125 MHz, 0.055 % error); not replayed with this image |
