@@ -30,8 +30,29 @@ sudo dd if=result/sd-image/*.img of=/dev/sdX bs=4M status=progress conv=fsync
 sync
 ```
 
-Use a cold power cycle after flashing. Do not write the vendor SPI image: it is
-the recovery path on this board.
+Use a cold power cycle after flashing. Do not overwrite the SPI without a
+verified backup. The reference board now carries a **mainline U-Boot fallback**
+in SPI (offset **0**; 8 KiB is the SD offset): a warm reset that the BootROM
+sends to SPI boots the SD card instead of the vendor 2018.05 image. Validated on
+2026-10-25 with 8/8 `systemctl reboot`; Kodi and WiFi came back without a cold
+boot. Keep a cold-bootable SD, the SPI backup, and test the restore path before
+changing the image.
+
+```bash
+# Backup the whole 16 MiB SPI (read-only), before any write
+sudo dd if=/dev/mtd0 of=spi-zero3-backup-$(date +%Y%m%d).bin bs=1M count=16
+sha256sum spi-zero3-backup-*.bin
+
+# Fallback U-Boot (only after the image is built and verified)
+# flashcp handles erase; dd alone is not enough on SPI NOR
+sudo flashcp -v u-boot-sunxi-with-spl.bin /dev/mtd0
+sync
+```
+
+The fallback artifact is the nixbian `u-boot-sunxi-with-spl.bin`; its SPL
+header is eGON, the U-Boot FIT follows at `0xA000`, and the Zero 3 defconfig
+enables `CONFIG_SPL_SPI_SUNXI=y`. See `docs/backlog.md` #44 and the HavenOS
+session D for the validation protocol.
 
 ## First boot
 
@@ -71,8 +92,9 @@ from a machine that can reach the board. The Kodi unit is marked
 of restarting Kodi during the switch. This avoids `nixos-rebuild switch`
 returning 4 while leaving Kodi stopped.
 
-Keep the previous SD card bootable when testing a new image. Cold boot only;
-warm reset is not a reliable recovery path on this board.
+Keep the previous SD card bootable when testing a new image. The SPI mainline
+fallback is validated for warm resets (8/8 on 2026-10-25); keep the SPI backup
+and a cold-bootable SD as the recovery. See `docs/backlog.md` #44.
 
 ## Validation checklist
 

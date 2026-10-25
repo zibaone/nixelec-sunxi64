@@ -41,6 +41,17 @@
   flake.packages.aarch64-linux.orangepizero3-sd-image =
     self.nixosConfigurations.orangepizero3-kodi.config.system.build.sdImage;
 
+  # SPI fallback bootloader: U-Boot alone, written at SPI offset 0 (not 8 KiB,
+  # which is the SD offset). The SPL header is eGON.BT0 and the U-Boot FIT
+  # follows at 0xA000. `flash-spi-uboot` on the board backs up the SPI first.
+  flake.packages.aarch64-linux.orangepizero3-spi-uboot =
+    inputs.nixpkgs.legacyPackages.aarch64-linux.runCommand "orangepizero3-spi-uboot" { }
+      ''
+        mkdir -p $out
+        cp ${self.nixosConfigurations.orangepizero3-kodi.config.hardware.nixbian.uBoot.package}/u-boot-sunxi-with-spl.bin $out/
+        echo "Write this file to SPI offset 0 (not 8 KiB); see docs/deployment.md." > $out/README
+      '';
+
   # Driver and kernel headers: kernel.dev is a build input, not part of the
   # system closure, so it must be built and pushed explicitly for the cache.
   flake.packages.aarch64-linux.uwe5622 =
