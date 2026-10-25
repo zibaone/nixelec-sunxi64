@@ -1,0 +1,313 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      build-image:
+        description: "Build the aarch64 SD image (long; several hours without a cache)"
+        type: boolean
+        default: false
+      nixpkgs-rev:
+        description: "Nixpkgs revision to override (use the consumer's rev to align store paths)"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+# A push during an image build must not start a second one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  eval:
+    name: Eval + format (x86_64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
+            experimental-features = nix-command flakes
+            max-jobs = 4
+
+      - name: Evaluate the flake (x86_64)
+        run: nix flake check --system x86_64-linux -L
+
+      - name: Evaluate the aarch64 toplevel and image (no build)
+        run: |
+          set -euo pipefail
+          nix eval --raw .#nixosConfigurations.orangepizero3-kodi.config.system.build.toplevel.drvPath
+          nix eval --raw .#packages.aarch64-linux.orangepizero3-sd-image.drvPath
+
+      - name: Structural checks
+        run: |
+          set -euo pipefail
+          # U-Boot must be written at offset 8 KiB, otherwise the image does not boot.
+          nix eval --raw .#nixosConfigurations.orangepizero3-kodi.config.sdImage.postBuildCommands |
+            grep -q 'seek=8'
+          # The DTB must be the H618 one.
+          nix eval --raw .#nixosConfigurations.orangepizero3-kodi.config.hardware.deviceTree.name |
+            grep -q 'sun50i-h618-orangepi-zero3.dtb'
+          # HDMI audio: both pruned modules must be put back.
+          nix eval --json .#nixosConfigurations.orangepizero3-kodi.config.boot.kernelModules |
+            grep -q 'dw-hdmi-i2s-audio'
+          nix eval --json .#nixosConfigurations.orangepizero3-kodi.config.boot.kernelModules |
+            grep -q 'snd-soc-hdmi-codec'
+
+      - name: Dry-run the aarch64 image
+        run: |
+          set -euo pipefail
+          nix build --dry-run --no-link .#packages.aarch64-linux.orangepizero3-sd-image 2>&1 | tee dry-run.txt
+
+      - name: Build the UWE5622 firmware
+        run: nix build -L .#packages.x86_64-linux.uwe5622-firmware
+
+      - name: Summary
+        run: |
+          {
+            echo "## Evaluation"
+            echo "- kernel: $(nix eval --raw .#nixosConfigurations.orangepizero3-kodi.config.boot.kernelPackages.kernel.version)"
+            echo "- DTB: $(nix eval --raw .#nixosConfigurations.orangepizero3-kodi.config.hardware.deviceTree.name)"
+            echo "- image: $(nix eval --raw .#nixosConfigurations.orangepizero3-kodi.config.image.fileName)"
+            echo
+            echo "## Image dry-run"
+            echo '```'
+            tail -5 dry-run.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dry-run
+          path: dry-run.txt
+          if-no-files-found: error
+
+  aarch64-eval:
+    name: Builtin kernel (aarch64)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
+            experimental-features = nix-command flakes
+            max-jobs = 4
+
+      # The builtin kernel uses an ARM IFD on the .config: this job verifies
+      # CONFIG_SUN50I_H6_PRCM_PPU=y without building the full kernel.
+      - name: Verify CONFIG_SUN50I_H6_PRCM_PPU=y
+        run: nix build -L .#checks.aarch64-linux.prcm-ppu-builtin-config
+
+      - name: Evaluate the aarch64 image
+        run: nix eval --raw .#packages.aarch64-linux.orangepizero3-sd-image.drvPath
+
+  cache:
+    name: Fill cache (aarch64)
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 350
+    env:
+      NIXPKGS_REV: ${{ github.event.inputs.nixpkgs-rev }}
+      CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      CACHIX_SIGNING_KEY: ${{ secrets.CACHIX_SIGNING_KEY }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check cache credentials
+        id: cache
+        run: |
+          if [ -n "${CACHIX_AUTH_TOKEN:-}" ] && [ -n "${CACHIX_SIGNING_KEY:-}" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Cachix secrets are missing; the cache will not be filled."
+          fi
+
+      - name: Disk — mount /mnt on /nix when it is a separate volume
+        if: steps.cache.outputs.enabled == 'true'
+        run: |
+          echo "=== before ==="
+          df -h / /mnt || true
+          if [ -d /mnt ] && [ "$(df --output=target /mnt | tail -1)" = "/mnt" ]; then
+            sudo mkdir -p /mnt/nix /nix
+            sudo mount --bind /mnt/nix /nix
+            echo "=== /nix mounted on /mnt ==="
+          else
+            echo "=== /mnt absent or on the same fs as /: the root disk is enough ==="
+          fi
+          df -h / || true
+          echo "cpu: $(nproc) | ram: $(free -g | awk '/^Mem:/{print $2}') GiB"
+
+      - uses: cachix/install-nix-action@v31
+        if: steps.cache.outputs.enabled == 'true'
+        with:
+          extra_nix_config: |
+            access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
+            experimental-features = nix-command flakes
+            max-jobs = 4
+            cores = 0
+
+      - uses: cachix/cachix-action@v17
+        if: steps.cache.outputs.enabled == 'true'
+        with:
+          name: ${{ vars.CACHIX_CACHE || 'nixelec' }}
+          authToken: ${{ env.CACHIX_AUTH_TOKEN }}
+          signingKey: ${{ env.CACHIX_SIGNING_KEY }}
+          skipPush: true
+
+      - name: Build toplevel, driver, and kernel.dev
+        if: steps.cache.outputs.enabled == 'true'
+        run: |
+          set -euo pipefail
+          override=()
+          if [ -n "${NIXPKGS_REV:-}" ]; then
+            override=(--override-input nixpkgs "github:NixOS/nixpkgs/${NIXPKGS_REV}")
+          fi
+          nix build "${override[@]}" -L \
+            .#nixosConfigurations.orangepizero3-kodi-cache.config.system.build.toplevel \
+            .#packages.aarch64-linux.uwe5622 \
+            .#packages.aarch64-linux.kernel-dev
+
+      - name: Push the closure and verify narinfos
+        if: steps.cache.outputs.enabled == 'true'
+        env:
+          CACHE: ${{ vars.CACHIX_CACHE || 'nixelec' }}
+        run: |
+          set -euo pipefail
+          override=()
+          if [ -n "${NIXPKGS_REV:-}" ]; then
+            override=(--override-input nixpkgs "github:NixOS/nixpkgs/${NIXPKGS_REV}")
+          fi
+          toplevel=$(nix path-info "${override[@]}" .#nixosConfigurations.orangepizero3-kodi-cache.config.system.build.toplevel)
+          driver=$(nix path-info "${override[@]}" .#packages.aarch64-linux.uwe5622)
+          kernel_dev=$(nix path-info "${override[@]}" .#packages.aarch64-linux.kernel-dev)
+          cachix push "$CACHE" "$toplevel" "$driver" "$kernel_dev"
+          for p in "$toplevel" "$driver" "$kernel_dev"; do
+            h=$(basename "$p" | cut -c1-32)
+            code=$(curl -s -o /dev/null -w '%{http_code}' "https://${CACHE}.cachix.org/$h.narinfo")
+            echo "$code  $(basename "$p")"
+            test "$code" = "200"
+          done
+
+  image:
+    name: SD image (aarch64)
+    if: github.event_name == 'workflow_dispatch' && inputs.build-image
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 350
+    env:
+      NIXPKGS_REV: ${{ github.event.inputs.nixpkgs-rev }}
+      CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      CACHIX_SIGNING_KEY: ${{ secrets.CACHIX_SIGNING_KEY }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Disk — mount /mnt on /nix when it is a separate volume
+        run: |
+          echo "=== before ==="
+          df -h / /mnt || true
+          if [ -d /mnt ] && [ "$(df --output=target /mnt | tail -1)" = "/mnt" ]; then
+            sudo mkdir -p /mnt/nix /nix
+            sudo mount --bind /mnt/nix /nix
+            echo "=== /nix mounted on /mnt ==="
+          else
+            echo "=== /mnt absent or on the same fs as /: the root disk is enough ==="
+          fi
+          df -h / || true
+          echo "cpu: $(nproc) | ram: $(free -g | awk '/^Mem:/{print $2}') GiB"
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
+            experimental-features = nix-command flakes
+            max-jobs = 4
+            cores = 0
+
+      # Optional: create the Cachix cache and set both secrets. Without them,
+      # the job rebuilds the whole closure (slow).
+      #
+      # CACHIX_CACHE is a repository variable:
+      #   - unset       -> nixelec.cachix.org
+      #   - "<cache>"   -> that cache's substituter
+      - uses: cachix/cachix-action@v17
+        if: env.CACHIX_AUTH_TOKEN != '' && env.CACHIX_SIGNING_KEY != ''
+        with:
+          name: ${{ vars.CACHIX_CACHE || 'nixelec' }}
+          authToken: ${{ env.CACHIX_AUTH_TOKEN }}
+          signingKey: ${{ env.CACHIX_SIGNING_KEY }}
+          # Explicit push below: the daemon would also upload the compiler and
+          # sources used to build the image, which nobody needs, and reports
+          # "Pushed" for paths that stayed 404.
+          skipPush: true
+
+      - name: Build the SD image
+        run: |
+          set -euo pipefail
+          override=()
+          if [ -n "${NIXPKGS_REV:-}" ]; then
+            override=(--override-input nixpkgs "github:NixOS/nixpkgs/${NIXPKGS_REV}")
+          fi
+          s=$(date +%s)
+          nix build "${override[@]}" -L .#packages.aarch64-linux.orangepizero3-sd-image
+          d=$(( $(date +%s) - s ))
+          echo "| image | ${d}s |" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Size and output
+        run: |
+          set -euo pipefail
+          override=()
+          if [ -n "${NIXPKGS_REV:-}" ]; then
+            override=(--override-input nixpkgs "github:NixOS/nixpkgs/${NIXPKGS_REV}")
+          fi
+          ls -lh result/sd-image/
+          {
+            echo "| output | size |"
+            echo "|---|---|"
+            nix path-info "${override[@]}" -S .#packages.aarch64-linux.orangepizero3-sd-image |
+              awk '{printf "| %s | %.1f MiB |\n", $1, $2/1048576}'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # cachix-action has already reported "Pushed" for paths that stayed 404.
+      # Push the system closure and the image explicitly, then verify both
+      # narinfos. The toplevel closure is what a consumer actually reuses.
+      - name: Push the system closure and image, verify narinfos
+        if: env.CACHIX_AUTH_TOKEN != '' && env.CACHIX_SIGNING_KEY != ''
+        env:
+          CACHE: ${{ vars.CACHIX_CACHE || 'nixelec' }}
+        run: |
+          set -euo pipefail
+          override=()
+          if [ -n "${NIXPKGS_REV:-}" ]; then
+            override=(--override-input nixpkgs "github:NixOS/nixpkgs/${NIXPKGS_REV}")
+          fi
+          toplevel=$(nix path-info "${override[@]}" .#nixosConfigurations.orangepizero3-kodi.config.system.build.toplevel)
+          image=$(nix path-info "${override[@]}" .#packages.aarch64-linux.orangepizero3-sd-image)
+          cachix push "$CACHE" "$toplevel" "$image"
+          for p in "$toplevel" "$image"; do
+            h=$(basename "$p" | cut -c1-32)
+            code=$(curl -s -o /dev/null -w '%{http_code}' "https://${CACHE}.cachix.org/$h.narinfo")
+            echo "$code  $(basename "$p")"
+            test "$code" = "200"
+          done
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: orangepizero3-sd-image
+          path: result/sd-image/*.img*
+          if-no-files-found: error
+          retention-days: 14
