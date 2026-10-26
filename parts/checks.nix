@@ -89,6 +89,16 @@
               touch $out
             '';
 
+        # The default mode must carry `=m`: if Armbian removes or flips the
+        # symbol, the default image boots without the power domain and the CI
+        # stays green. The `.config` derivation builds in ~1 s on x86.
+        prcm-ppu-default-config =
+          pkgs.runCommand "check-prcm-ppu-default-config" { } ''
+            last=$(grep '^CONFIG_SUN50I_H6_PRCM_PPU=' ${self.nixosConfigurations.orangepizero3-kodi.config.boot.kernelPackages.kernel.configfile} | tail -1)
+            test "$last" = "CONFIG_SUN50I_H6_PRCM_PPU=m"
+            touch $out
+          '';
+
         # `switch` must not restart Kodi: systemctl restart of a
         # `Restart = "always"` unit can fail and makes the switch return 4.
         kodi-restart-policy =
