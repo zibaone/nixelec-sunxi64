@@ -25,22 +25,26 @@ in
         "module"
         "builtin"
       ];
-      default = "module";
+      default = "builtin";
       description = ''
-        `module`: CONFIG_SUN50I_H6_PRCM_PPU=m. The module is loaded from the
-        initrd so the power domain is registered before udev/panfrost.
-        `builtin`: CONFIG_SUN50I_H6_PRCM_PPU=y. No module to load; the domain
-        is registered during kernel initialization.
+        `builtin`: CONFIG_SUN50I_H6_PRCM_PPU=y, provided by the nixbian family
+        kernel (family_config.json). No module to load; the domain is registered
+        during kernel initialization. This is the default since the family
+        kernel carries the symbol.
+        `module`: CONFIG_SUN50I_H6_PRCM_PPU=m, the module is loaded from the
+        initrd so the power domain is registered before udev/panfrost. Kept as
+        the rollback path when a kernel without the builtin symbol is used.
       '';
     };
 
     assumeKernelBuiltin = lib.mkOption {
       type = lib.types.bool;
-      default = false;
+      default = true;
       description = ''
-        Allow `mode = "builtin"` with a prebuilt `kernelPackage` known to have
-        CONFIG_SUN50I_H6_PRCM_PPU=y. Otherwise builtin mode requires
-        `nixelec.kernelPackage = null` so nixbian builds the kernel.
+        Assume the selected `kernelPackage` was built with
+        CONFIG_SUN50I_H6_PRCM_PPU=y. True for the nixbian family kernel, which
+        gets the symbols from family_config.json; set false to force the
+        assertion when you bring a foreign or older kernel.
       '';
     };
 
@@ -48,9 +52,11 @@ in
       type = lib.types.bool;
       default = true;
       description = ''
-        In builtin mode with `kernelPackage = null`, append
-        `CONFIG_SUN50I_H6_PRCM_PPU=y` to `hardware.nixbian.extraConfig`.
-        If you already define `extraConfig`, include the line yourself.
+        In builtin mode with `kernelPackage = null` (per-board nixbian build),
+        append `CONFIG_SUN50I_H6_PRCM_PPU=y` to `hardware.nixbian.extraConfig`.
+        Has no effect with the family kernel: the symbol already comes from
+        nixbian's family_config.json, and adding it again would fork the
+        kernel derivation away from the shared cache.
       '';
     };
   };

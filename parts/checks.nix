@@ -50,11 +50,13 @@
         # (assumeKernelBuiltin): no aarch64 IFD on the .config.
         prcm-ppu-loading =
           let
-            builtin = self.nixosConfigurations.orangepizero3-kodi.extendModules {
+            # Default is builtin since P3.2: the family kernel carries the
+            # symbol, so nothing is loaded from the initrd and no rebind runs.
+            # `module` stays the rollback wiring (with a kernel that has =m).
+            moduleMode = self.nixosConfigurations.orangepizero3-kodi.extendModules {
               modules = [
                 {
-                  nixelec.prcmPpu.mode = "builtin";
-                  nixelec.prcmPpu.assumeKernelBuiltin = true;
+                  nixelec.prcmPpu.mode = "module";
                 }
               ];
             };
@@ -80,38 +82,39 @@
             {
               defaultInitrd = builtins.toJSON self.nixosConfigurations.orangepizero3-kodi.config.boot.initrd.kernelModules;
               defaultModules = builtins.toJSON self.nixosConfigurations.orangepizero3-kodi.config.boot.kernelModules;
-              builtinInitrd = builtins.toJSON builtin.config.boot.initrd.kernelModules;
-              builtinModules = builtins.toJSON builtin.config.boot.kernelModules;
+              moduleInitrd = builtins.toJSON moduleMode.config.boot.initrd.kernelModules;
+              moduleModules = builtins.toJSON moduleMode.config.boot.kernelModules;
               builtinExtraConfig = builtinWithKernel.config.hardware.nixbian.extraConfig;
               consumerExtraConfig = builtinWithConsumer.config.hardware.nixbian.extraConfig;
               defaultRebind = builtins.hasAttr "panfrost-rebind" self.nixosConfigurations.orangepizero3-kodi.config.systemd.services;
-              builtinRebind = builtins.hasAttr "panfrost-rebind" builtin.config.systemd.services;
+              moduleRebind = builtins.hasAttr "panfrost-rebind" moduleMode.config.systemd.services;
             }
             ''
               set -euo pipefail
-              echo "$defaultInitrd" | grep -q sun50i_h6_prcm_ppu
-              echo "$defaultModules" | grep -q sun50i_h6_prcm_ppu
-              ! echo "$builtinInitrd" | grep -q sun50i_h6_prcm_ppu
-              ! echo "$builtinModules" | grep -q sun50i_h6_prcm_ppu
+              ! echo "$defaultInitrd" | grep -q sun50i_h6_prcm_ppu
+              ! echo "$defaultModules" | grep -q sun50i_h6_prcm_ppu
+              echo "$moduleInitrd" | grep -q sun50i_h6_prcm_ppu
+              echo "$moduleModules" | grep -q sun50i_h6_prcm_ppu
               echo "$builtinExtraConfig" | grep -q '^CONFIG_SUN50I_H6_PRCM_PPU=y$'
               # A consumer assigning its own extraConfig must not drop the line:
               # it has to stay the last one (kconfig keeps the last occurrence).
               last=$(printf '%s\n' "$consumerExtraConfig" | grep -v '^$' | tail -1)
               test "$last" = "CONFIG_SUN50I_H6_PRCM_PPU=y"
-              test "$defaultRebind" = "1"
-              test "$builtinRebind" = ""
+              test "$defaultRebind" = ""
+              test "$moduleRebind" = "1"
               touch $out
             '';
 
-        # The default mode must carry `=m`: if Armbian removes or flips the
-        # symbol, the default image boots without the power domain and the CI
-        # stays green. The `.config` derivation builds in ~1 s on x86.
-        prcm-ppu-default-config =
-          pkgs.runCommand "check-prcm-ppu-default-config" { } ''
-            last=$(grep '^CONFIG_SUN50I_H6_PRCM_PPU=' ${self.nixosConfigurations.orangepizero3-kodi.config.boot.kernelPackages.kernel.configfile} | tail -1)
-            test "$last" = "CONFIG_SUN50I_H6_PRCM_PPU=m"
-            touch $out
-          '';
+        # The effective default .config must end with the symbol the default
+        # mode expects. Builtin is the default since P3.2, and the family line
+        # comes from nixbian's family_config.json: if Armbian or the generator
+        # drops it, the image boots without the power domain and the CI would
+        # stay green. The `.config` derivation builds in ~1 s on x86.
+        prcm-ppu-default-config = pkgs.runCommand "check-prcm-ppu-default-config" { } ''
+          last=$(grep '^CONFIG_SUN50I_H6_PRCM_PPU=' ${self.nixosConfigurations.orangepizero3-kodi.config.boot.kernelPackages.kernel.configfile} | tail -1)
+          test "$last" = "CONFIG_SUN50I_H6_PRCM_PPU=y"
+          touch $out
+        '';
 
         # `switch` must not restart Kodi: systemctl restart of a
         # `Restart = "always"` unit can fail and makes the switch return 4.
