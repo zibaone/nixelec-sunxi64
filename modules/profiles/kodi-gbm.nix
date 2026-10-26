@@ -479,8 +479,13 @@ in
     };
 
     # dw-hdmi invalidates the CEC address on HPD loss. A Kodi modeset re-reads
-    # the EDID and re-arms the notifier, so restart Kodi only when the address
-    # is invalid and the sink is connected. The stamp prevents a restart loop.
+    # the EDID and re-arms the notifier, so restart Kodi only when no logical
+    # address is claimed and the sink is connected. A real hotplug burst
+    # (2026-10-26) can also leave the controller unable to claim a logical
+    # address: the physical address comes back, but `polling for LA` keeps
+    # failing (tx_status 0x0030 = CEC_TX_STATUS_ERROR|MAX_RETRIES), so CEC stays
+    # dead until the module is reloaded. Hence the restart is verified against
+    # the logical address mask, with one module reload as a fallback.
     systemd.services.hdmi-cec-hotplug = lib.mkIf (cfg.cec.enable && cfg.cec.hotplugRecovery) {
       description = "Restore the CEC physical address after an HDMI hotplug";
       unitConfig = {
@@ -492,22 +497,88 @@ in
         TimeoutStartSec = 120;
       };
       script = ''
+        stamp=/run/hdmi-cec-hotplug.stamp
+
+        cec_ctl() {
+          ${pkgs.v4l-utils}/bin/cec-ctl -d ${cfg.cec.device} -S 2>/dev/null
+        }
+
+        # 0x0000 means the adapter claimed no logical address at all: without
+        # one it can neither transmit nor receive any CEC message.
+        cec_la_mask() {
+          cec_ctl \
+            | ${pkgs.gnugrep}/bin/grep -i -m1 "Logical Address Mask" \
+            | ${pkgs.gnugrep}/bin/grep -o -m1 "0x[0-9a-fA-F]*" || true
+        }
+
+        cec_has_la() {
+          mask=$(cec_la_mask)
+          [ -n "$mask" ] && [ "$mask" != "0x0000" ]
+        }
+
+        # Give Kodi modeset up to 30 s to claim a logical address.
+        wait_la() {
+          for _ in $(${pkgs.coreutils}/bin/seq 1 15); do
+            ${pkgs.coreutils}/bin/sleep 2
+            if cec_has_la; then
+              return 0
+            fi
+          done
+          return 1
+        }
+
         ${pkgs.coreutils}/bin/sleep 3
         ${config.systemd.package}/bin/systemctl is-active --quiet kodi-gbm.service || exit 0
         [ -e ${cfg.cec.device} ] || exit 0
         [ "$(${pkgs.coreutils}/bin/cat /sys/class/drm/${cfg.cec.connector}/status)" = "connected" ] || exit 0
-        phys=$(${pkgs.v4l-utils}/bin/cec-ctl -d ${cfg.cec.device} -S 2>/dev/null \
-          | ${pkgs.gnugrep}/bin/grep -m1 "Physical Address" \
-          | ${pkgs.gnused}/bin/sed "s/.*: *//")
-        [ "$phys" = "f.f.f.f" ] || exit 0
-        stamp=/run/hdmi-cec-hotplug.stamp
-        if [ -e "$stamp" ] && [ $(( $(${pkgs.coreutils}/bin/date +%s) - $(${pkgs.coreutils}/bin/stat -c %Y "$stamp") )) -lt 300 ]; then
-          echo "CEC recovery already attempted recently, skip"
+
+        if cec_has_la; then
+          echo "CEC logical address present, nothing to recover"
+          ${pkgs.coreutils}/bin/rm -f "$stamp"
           exit 0
         fi
-        touch "$stamp"
-        echo "CEC physical address invalid after hotplug, restarting Kodi"
+
+        phys=$(cec_ctl \
+          | ${pkgs.gnugrep}/bin/grep -m1 "Physical Address" \
+          | ${pkgs.gnused}/bin/sed "s/.*: *//")
+        echo "CEC after hotplug: physical address $phys, logical address mask $(cec_la_mask)"
+
+        if [ "$phys" = "f.f.f.f" ]; then
+          if [ -e "$stamp" ] && [ $(( $(${pkgs.coreutils}/bin/date +%s) - $(${pkgs.coreutils}/bin/stat -c %Y "$stamp") )) -lt 300 ]; then
+            echo "CEC recovery already attempted recently, skip"
+            exit 0
+          fi
+          ${pkgs.coreutils}/bin/touch "$stamp"
+          echo "CEC physical address invalid after hotplug, restarting Kodi"
+          ${config.systemd.package}/bin/systemctl --no-block restart kodi-gbm.service
+          if wait_la; then
+            echo "CEC logical address claimed after the Kodi restart"
+            ${pkgs.coreutils}/bin/rm -f "$stamp"
+            exit 0
+          fi
+          echo "CEC logical address still missing after the Kodi restart"
+        fi
+
+        # 2026-10-26: after an HDMI HPD burst the controller can stay in
+        # CEC_STAT_ERROR_INIT, so restarting Kodi is not enough. Reloading the
+        # module re-initialises the block and lets Kodi claim the address again.
+        echo "Reloading dw_hdmi_cec to re-initialise the CEC controller"
+        ${pkgs.kmod}/bin/modprobe -r dw_hdmi_cec 2>/dev/null || true
+        ${pkgs.kmod}/bin/modprobe dw_hdmi_cec 2>/dev/null || true
+        for _ in $(${pkgs.coreutils}/bin/seq 1 50); do
+          if [ -e ${cfg.cec.device} ]; then
+            break
+          fi
+          ${pkgs.coreutils}/bin/sleep 0.2
+        done
         ${config.systemd.package}/bin/systemctl --no-block restart kodi-gbm.service
+        if wait_la; then
+          echo "CEC logical address claimed after the module reload"
+          ${pkgs.coreutils}/bin/rm -f "$stamp"
+        else
+          echo "CEC recovery failed: physical address $phys, logical address mask $(cec_la_mask)" >&2
+          exit 1
+        fi
       '';
     };
 
