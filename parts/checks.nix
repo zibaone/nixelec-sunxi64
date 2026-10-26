@@ -66,6 +66,15 @@
                 }
               ];
             };
+            builtinWithConsumer = self.nixosConfigurations.orangepizero3-kodi.extendModules {
+              modules = [
+                {
+                  nixelec.prcmPpu.mode = "builtin";
+                  nixelec.kernelPackage = null;
+                  hardware.nixbian.extraConfig = "CONFIG_DEBUG_INFO_NONE=y\n";
+                }
+              ];
+            };
           in
           pkgs.runCommand "check-prcm-ppu-loading"
             {
@@ -74,6 +83,7 @@
               builtinInitrd = builtins.toJSON builtin.config.boot.initrd.kernelModules;
               builtinModules = builtins.toJSON builtin.config.boot.kernelModules;
               builtinExtraConfig = builtinWithKernel.config.hardware.nixbian.extraConfig;
+              consumerExtraConfig = builtinWithConsumer.config.hardware.nixbian.extraConfig;
               defaultRebind = builtins.hasAttr "panfrost-rebind" self.nixosConfigurations.orangepizero3-kodi.config.systemd.services;
               builtinRebind = builtins.hasAttr "panfrost-rebind" builtin.config.systemd.services;
             }
@@ -84,6 +94,10 @@
               ! echo "$builtinInitrd" | grep -q sun50i_h6_prcm_ppu
               ! echo "$builtinModules" | grep -q sun50i_h6_prcm_ppu
               echo "$builtinExtraConfig" | grep -q '^CONFIG_SUN50I_H6_PRCM_PPU=y$'
+              # A consumer assigning its own extraConfig must not drop the line:
+              # it has to stay the last one (kconfig keeps the last occurrence).
+              last=$(printf '%s\n' "$consumerExtraConfig" | grep -v '^$' | tail -1)
+              test "$last" = "CONFIG_SUN50I_H6_PRCM_PPU=y"
               test "$defaultRebind" = "1"
               test "$builtinRebind" = ""
               touch $out

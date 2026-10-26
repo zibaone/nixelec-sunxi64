@@ -164,10 +164,14 @@ in
     })
 
     # `=y`: nixbian builds the per-board kernel with the symbol built in.
+    # `mkAfter` : la ligne atterrit après celles du consommateur. Avec
+    # `mkDefault` elle disparaissait dès qu'un consommateur définissait son
+    # propre extraConfig, alors que le mode builtin supprime toujours le
+    # chargement du module.
     (lib.mkIf
       (cfg.prcmPpu.mode == "builtin" && cfg.kernelPackage == null && cfg.prcmPpu.manageKernelConfig)
       {
-        hardware.nixbian.extraConfig = lib.mkDefault "CONFIG_SUN50I_H6_PRCM_PPU=y";
+        hardware.nixbian.extraConfig = lib.mkAfter "CONFIG_SUN50I_H6_PRCM_PPU=y\n";
       }
     )
   ];
