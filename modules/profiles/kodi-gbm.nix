@@ -418,6 +418,18 @@ in
       pulse.enable = true;
     };
 
+    # WirePlumber 0.5 creates every sink at `device.routes.default-sink-volume`
+    # = 0.064 linear, i.e. 40 % as `wpctl get-volume` prints it (cubic) —
+    # 0.064 = 0.40³ ≈ −24 dB. Kodi never touches that: its own "100 %" is the
+    # volume of its *stream*, not of the sink, so the kiosk played 24 dB below
+    # the source with the on-screen volume bar at full. On the Zero 3 the HDMI
+    # codec exposes no mixer at all (`route.hw-volume=false`, the sink carries
+    # `softVolumes`), so this software volume is the one and only attenuation
+    # in the chain. Measured on 2026-10-26: sink at 0.40 → quiet; 1.00 → normal.
+    services.pipewire.wireplumber.extraConfig."51-default-sink-volume" = {
+      "wireplumber.settings"."device.routes.default-sink-volume" = 1.0;
+    };
+
     services.xserver.enable = lib.mkDefault false;
     documentation.enable = lib.mkDefault false;
     nix.registry = lib.mkForce { };
