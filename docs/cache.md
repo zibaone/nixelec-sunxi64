@@ -11,15 +11,17 @@ content-addressed, so three things must match:
 
 ## Current pins
 
-| Input | Revision |
-|---|---|
-| nixpkgs | `cd4ea8d57de16f4810bc5f14207bac45fbf19f67` |
-| nixbian | `038d30923ae049a6c3e09ecae96e121ee8e5109a` |
-| nix-v4l2-request | `885d9a0bc8249bf9b635b64e9acf6e329817016b` |
+No revision is frozen here: the revs move every day and a copied hash is wrong
+the next morning. The contract is the derivation, not the rev — check the
+`drvPath` (below) instead of matching commit SHAs. As of 2026-10-26 the kernel
+is `iwx0zdgrc4gjh86j46f7mfaf2fj9j0yj-linux-7.0.14.drv`, identical in HavenOS
+and nixelec.
 
-`038d3092` is one CI commit before the `v0.4.0` tag; the kernel and the two sunxi
-audio patches are identical. Bump it only if tag alignment matters, and refill
-the cache afterwards.
+Read the pins from the lock when you need them:
+
+```bash
+jq -r '.nodes.nixpkgs.locked.rev, .nodes.nixbian.locked.rev' flake.lock
+```
 
 ## Consuming the flake
 
