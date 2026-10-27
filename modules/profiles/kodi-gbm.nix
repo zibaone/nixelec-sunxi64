@@ -218,6 +218,10 @@ in
         StandardError = "journal+console";
         ExecStart = "${kodiPackage}/bin/kodi --standalone --windowing=gbm";
         Restart = "always";
+        # SIGTERM (128+15) is how hdmi-cec-hotplug stops Kodi on purpose.
+        # Without this, systemd logs "Failed with result 'exit-code'" on
+        # every restart (37 occurrences, audit 2026-10-27).
+        SuccessExitStatus = [ 143 ];
       };
     };
 
@@ -489,8 +493,15 @@ in
     systemd.services.hdmi-cec-hotplug = lib.mkIf (cfg.cec.enable && cfg.cec.hotplugRecovery) {
       description = "Restore the CEC physical address after an HDMI hotplug";
       unitConfig = {
-        StartLimitIntervalSec = 300;
-        StartLimitBurst = 3;
+        # This unit is triggered by udev on every DRM `change` event, and a
+        # single HDMI hotplug burst emits several in a row (5 events in 1.2 s
+        # measured, 2026-10-26). With 3 starts / 300 s the service hit
+        # start-limit-hit exactly when it was needed (29 occurrences, audit
+        # 2026-10-27). The script is idempotent and already rate-limits its
+        # own Kodi restart with /run/hdmi-cec-hotplug.stamp, so the systemd
+        # limit only has to stop a runaway trigger loop.
+        StartLimitIntervalSec = 60;
+        StartLimitBurst = 10;
       };
       serviceConfig = {
         Type = "oneshot";
