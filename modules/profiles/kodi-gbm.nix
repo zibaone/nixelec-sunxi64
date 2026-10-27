@@ -494,7 +494,9 @@ in
       };
       serviceConfig = {
         Type = "oneshot";
-        TimeoutStartSec = 120;
+        # Worst case: 3 s settle + 80 s Kodi window + claim + module reload
+        # + restart + 80 s window. A 120 s cap killed the last path.
+        TimeoutStartSec = 240;
       };
       script = ''
         stamp=/run/hdmi-cec-hotplug.stamp
@@ -503,22 +505,38 @@ in
           ${pkgs.v4l-utils}/bin/cec-ctl -d ${cfg.cec.device} -S 2>/dev/null
         }
 
-        # 0x0000 means the adapter claimed no logical address at all: without
-        # one it can neither transmit nor receive any CEC message.
         cec_la_mask() {
           cec_ctl \
             | ${pkgs.gnugrep}/bin/grep -i -m1 "Logical Address Mask" \
             | ${pkgs.gnugrep}/bin/grep -o -m1 "0x[0-9a-fA-F]*" || true
         }
 
+        # 0x0000 means the adapter claimed no logical address at all, and
+        # 0x8000 is LA 15 ("unregistered"): broadcast-only, not addressable,
+        # and most TVs ignore it. Neither counts as a usable claim — accepting
+        # 0x8000 was a false positive at cold boot (2026-10-27).
         cec_has_la() {
           mask=$(cec_la_mask)
-          [ -n "$mask" ] && [ "$mask" != "0x0000" ]
+          [ -n "$mask" ] || return 1
+          [ $(( mask & 0x7fff )) -ne 0 ]
         }
 
-        # Give Kodi modeset up to 30 s to claim a logical address.
+        # Give Kodi modeset up to 80 s to claim a logical address. Kodi only
+        # configures CEC ~30 s after it starts, and the first poll can fail
+        # (tx_status 0x0030) while the controller is still settling: the window
+        # must cover that attempt, otherwise the check runs too early.
         wait_la() {
-          for _ in $(${pkgs.coreutils}/bin/seq 1 15); do
+          for _ in $(${pkgs.coreutils}/bin/seq 1 40); do
+            ${pkgs.coreutils}/bin/sleep 2
+            if cec_has_la; then
+              return 0
+            fi
+          done
+          return 1
+        }
+
+        wait_la_quick() {
+          for _ in $(${pkgs.coreutils}/bin/seq 1 5); do
             ${pkgs.coreutils}/bin/sleep 2
             if cec_has_la; then
               return 0
@@ -557,6 +575,22 @@ in
             exit 0
           fi
           echo "CEC logical address still missing after the Kodi restart"
+        fi
+
+        # 2026-10-27 (cold boot, measured): the first LA poll can run before
+        # the CEC block is ready and fail with tx_status=0x0030, leaving the
+        # adapter on LA 15 (0x8000). Kodi never retries, so claim explicitly
+        # once the adapter has settled — this succeeds where the boot poll
+        # failed, and is cheaper than reloading the module.
+        if ! cec_has_la; then
+          echo "Claiming a logical address (mask $(cec_la_mask)) with cec-ctl --playback"
+          ${pkgs.v4l-utils}/bin/cec-ctl -d ${cfg.cec.device} --playback || true
+          if wait_la_quick; then
+            echo "CEC logical address claimed by cec-ctl (mask $(cec_la_mask))"
+            ${pkgs.coreutils}/bin/rm -f "$stamp"
+            exit 0
+          fi
+          echo "CEC claim with cec-ctl failed (mask $(cec_la_mask))"
         fi
 
         # 2026-10-26: after an HDMI HPD burst the controller can stay in
