@@ -494,9 +494,10 @@ in
       };
       serviceConfig = {
         Type = "oneshot";
-        # Worst case: 3 s settle + 80 s Kodi window + claim + module reload
-        # + restart + 80 s window. A 120 s cap killed the last path.
-        TimeoutStartSec = 240;
+        # Worst case: 3 s settle + 80 s Kodi window + 8 s re-probe settle
+        # + 10 s claim + 10 s module reload + 80 s window + 18 s settle.
+        # A 120 s cap killed the last path; 240 s left only a 20 s margin.
+        TimeoutStartSec = 300;
       };
       script = ''
         stamp=/run/hdmi-cec-hotplug.stamp
@@ -545,12 +546,28 @@ in
           return 1
         }
 
+        # 2026-10-27 (cold boot, generation bps7bxxa): kernel patch 0002
+        # re-probes the EDID 0.5/1/2/4 s after a failure, and each re-probe
+        # resets the CEC controller. A logical address read inside that
+        # window is a false positive: the last re-probe erases it right
+        # after the service reported success. Wait out the window, then
+        # verify, and claim once more if the address is gone.
+        settle_and_verify() {
+          ${pkgs.coreutils}/bin/sleep 8
+          if cec_has_la; then
+            return 0
+          fi
+          echo "CEC logical address lost during the kernel EDID re-probe window, claiming again"
+          ${pkgs.v4l-utils}/bin/cec-ctl -d ${cfg.cec.device} --playback || true
+          wait_la_quick
+        }
+
         ${pkgs.coreutils}/bin/sleep 3
         ${config.systemd.package}/bin/systemctl is-active --quiet kodi-gbm.service || exit 0
         [ -e ${cfg.cec.device} ] || exit 0
         [ "$(${pkgs.coreutils}/bin/cat /sys/class/drm/${cfg.cec.connector}/status)" = "connected" ] || exit 0
 
-        if cec_has_la; then
+        if cec_has_la && settle_and_verify; then
           echo "CEC logical address present, nothing to recover"
           ${pkgs.coreutils}/bin/rm -f "$stamp"
           exit 0
@@ -569,7 +586,7 @@ in
           ${pkgs.coreutils}/bin/touch "$stamp"
           echo "CEC physical address invalid after hotplug, restarting Kodi"
           ${config.systemd.package}/bin/systemctl --no-block restart kodi-gbm.service
-          if wait_la; then
+          if wait_la && settle_and_verify; then
             echo "CEC logical address claimed after the Kodi restart"
             ${pkgs.coreutils}/bin/rm -f "$stamp"
             exit 0
@@ -606,7 +623,7 @@ in
           ${pkgs.coreutils}/bin/sleep 0.2
         done
         ${config.systemd.package}/bin/systemctl --no-block restart kodi-gbm.service
-        if wait_la; then
+        if wait_la && settle_and_verify; then
           echo "CEC logical address claimed after the module reload"
           ${pkgs.coreutils}/bin/rm -f "$stamp"
         else
