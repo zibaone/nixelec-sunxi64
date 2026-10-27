@@ -128,6 +128,38 @@ in
       description = "Disable Kodi UI sounds (guisoundmode=0, empty soundskin).";
     };
 
+    cpuGovernor = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = "schedutil";
+      description = ''
+        CPU frequency governor applied at boot. A mains-powered appliance does
+        not need `ondemand`: schedutil reacts on scheduler load instead of
+        polling, so a scene does not start on a late frequency ramp. The value
+        is skipped when the platform does not offer it; `null` leaves the
+        kernel default alone.
+      '';
+    };
+
+    watchdog = {
+      enable = lib.mkEnableOption "systemd hardware watchdog (hang recovery)";
+
+      runtimeTime = lib.mkOption {
+        type = lib.types.str;
+        default = "15s";
+        description = ''
+          Runtime watchdog timeout. Keep it below the hardware maximum: the
+          sunxi-wdt on the H618 caps at 16 s (measured `max_timeout`), and a
+          larger value only earns a capping warning.
+        '';
+      };
+
+      rebootTime = lib.mkOption {
+        type = lib.types.str;
+        default = "15s";
+        description = "Watchdog timeout for the reboot and shutdown sequence.";
+      };
+    };
+
     homeMenu.hidden = lib.mkOption {
       type = lib.types.listOf (lib.types.enum (builtins.attrNames homeMenuSettings));
       default = [ ];
@@ -193,6 +225,46 @@ in
         message = "nixelec.kodi.webServer.passwordFile must be set when the web server is enabled.";
       }
     ];
+
+    # Hardware watchdog: PID 1 pings it, so a hard hang restarts the appliance
+    # instead of leaving it frozen until a power cycle (two such freezes were
+    # measured on 2026-10-27: journal cut short, no kernel trace). Both values
+    # stay below the sunxi-wdt maximum of 16 s.
+    systemd.settings.Manager = lib.mkIf cfg.watchdog.enable {
+      RuntimeWatchdogSec = cfg.watchdog.runtimeTime;
+      RebootWatchdogSec = cfg.watchdog.rebootTime;
+    };
+
+    # The governor is written directly instead of going through
+    # `powerManagement.cpuFreqGovernor`: that option also loads
+    # `cpufreq_<governor>` as a module, and schedutil is built into the sunxi64
+    # kernel — `modprobe cpufreq_schedutil` fails there (measured on the
+    # reference board), which would leave `systemd-modules-load` failed. The
+    # guard makes the unit a no-op on a platform that does not offer the
+    # requested governor.
+    systemd.services.cpu-governor = lib.mkIf (cfg.cpuGovernor != null) {
+      description = "Set the CPU frequency governor to ${cfg.cpuGovernor}";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "systemd-modules-load.service" ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+      };
+      script = ''
+        applied=0
+        for policy in /sys/devices/system/cpu/cpufreq/policy*; do
+          [ -r "$policy/scaling_available_governors" ] || continue
+          read -r available < "$policy/scaling_available_governors" || continue
+          case " $available " in
+            *" ${cfg.cpuGovernor} "*) ;;
+            *) continue ;;
+          esac
+          echo "${cfg.cpuGovernor}" > "$policy/scaling_governor" || continue
+          applied=$((applied + 1))
+        done
+        echo "cpu-governor: ${cfg.cpuGovernor} applied to $applied policy(ies)"
+      '';
+    };
 
     systemd.services.kodi-gbm = {
       description = "Kodi (direct GBM, no compositor)";
