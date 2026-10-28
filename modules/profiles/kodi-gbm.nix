@@ -578,9 +578,11 @@ in
       serviceConfig = {
         Type = "oneshot";
         # Worst case: 3 s settle + 80 s Kodi window + 8 s re-probe settle
-        # + 10 s claim + 10 s module reload + 80 s window + 18 s settle.
-        # A 120 s cap killed the last path; 240 s left only a 20 s margin.
-        TimeoutStartSec = 300;
+        # + 80 s second Kodi window + module reload + 80 s window + 8 s
+        # settle. Retrying through a Kodi restart (instead of a cec-ctl
+        # claim) added a full 80 s window, so the cap moved from 300 s to
+        # 420 s: a cap that expires mid-recovery leaves CEC dead silently.
+        TimeoutStartSec = 420;
       };
       script = ''
         stamp=/run/hdmi-cec-hotplug.stamp
@@ -593,6 +595,24 @@ in
           cec_ctl \
             | ${pkgs.gnugrep}/bin/grep -i -m1 "Logical Address Mask" \
             | ${pkgs.gnugrep}/bin/grep -o -m1 "0x[0-9a-fA-F]*" || true
+        }
+
+        # The "Reply Vendor ID" capability line has no value, hence the colon.
+        cec_vendor() {
+          cec_ctl \
+            | ${pkgs.gnugrep}/bin/grep -i -m1 "Vendor ID *:" \
+            | ${pkgs.gnugrep}/bin/grep -o -m1 "0x[0-9a-fA-F]*" || true
+        }
+
+        # A logical address is not the goal: the TV remote only comes back
+        # when *libCEC* owns it. libCEC (Kodi) declares the Pulse-Eight vendor
+        # ID on the adapter, while `cec-ctl --playback` declares 0x000c03
+        # (HDMI). Measured 2026-10-27: mask 0x0010 owned by cec-ctl, cec-ctl -S
+        # showing PA + LA + TV, recovery reporting success — and the remote
+        # dead until Kodi was restarted. Hence the mask is always read
+        # together with its owner.
+        cec_owned_by_libcec() {
+          [ "$(cec_vendor)" = "0x001582" ]
         }
 
         # 0x0000 means the adapter claimed no logical address at all, and
@@ -619,14 +639,10 @@ in
           return 1
         }
 
-        wait_la_quick() {
-          for _ in $(${pkgs.coreutils}/bin/seq 1 5); do
-            ${pkgs.coreutils}/bin/sleep 2
-            if cec_has_la; then
-              return 0
-            fi
-          done
-          return 1
+        claim_via_kodi() {
+          echo "restarting Kodi so libCEC claims the logical address itself"
+          ${config.systemd.package}/bin/systemctl --no-block restart kodi-gbm.service
+          wait_la && cec_owned_by_libcec
         }
 
         # 2026-10-27 (cold boot, generation bps7bxxa): kernel patch 0002
@@ -634,15 +650,19 @@ in
         # resets the CEC controller. A logical address read inside that
         # window is a false positive: the last re-probe erases it right
         # after the service reported success. Wait out the window, then
-        # verify, and claim once more if the address is gone.
+        # verify, and restart Kodi once more if the address is gone.
+        #
+        # The retry must be a Kodi restart, never `cec-ctl --playback`:
+        # cec-ctl puts an address on the wire but leaves libCEC without one,
+        # and libCEC does not retry on its own — CEC then looks healthy while
+        # the TV remote does nothing (measured 2026-10-27 17:52 → 2026-10-28).
         settle_and_verify() {
           ${pkgs.coreutils}/bin/sleep 8
-          if cec_has_la; then
+          if cec_has_la && cec_owned_by_libcec; then
             return 0
           fi
-          echo "CEC logical address lost during the kernel EDID re-probe window, claiming again"
-          ${pkgs.v4l-utils}/bin/cec-ctl -d ${cfg.cec.device} --playback || true
-          wait_la_quick
+          echo "CEC logical address lost during the kernel EDID re-probe window (mask $(cec_la_mask), vendor $(cec_vendor))"
+          claim_via_kodi
         }
 
         ${pkgs.coreutils}/bin/sleep 3
@@ -670,32 +690,29 @@ in
           echo "CEC physical address invalid after hotplug, restarting Kodi"
           ${config.systemd.package}/bin/systemctl --no-block restart kodi-gbm.service
           if wait_la && settle_and_verify; then
-            echo "CEC logical address claimed after the Kodi restart"
+            echo "CEC logical address claimed by libCEC after the Kodi restart (mask $(cec_la_mask))"
             ${pkgs.coreutils}/bin/rm -f "$stamp"
             exit 0
           fi
-          echo "CEC logical address still missing after the Kodi restart"
+          echo "CEC logical address still missing after the Kodi restart (mask $(cec_la_mask), vendor $(cec_vendor))"
         fi
 
-        # 2026-10-27 (cold boot, measured): the first LA poll can run before
-        # the CEC block is ready and fail with tx_status=0x0030, leaving the
-        # adapter on LA 15 (0x8000). Kodi never retries, so claim explicitly
-        # once the adapter has settled — this succeeds where the boot poll
-        # failed, and is cheaper than reloading the module.
-        if ! cec_has_la; then
-          echo "Claiming a logical address (mask $(cec_la_mask)) with cec-ctl --playback"
-          ${pkgs.v4l-utils}/bin/cec-ctl -d ${cfg.cec.device} --playback || true
-          if wait_la_quick; then
-            echo "CEC logical address claimed by cec-ctl (mask $(cec_la_mask))"
-            ${pkgs.coreutils}/bin/rm -f "$stamp"
-            exit 0
-          fi
-          echo "CEC claim with cec-ctl failed (mask $(cec_la_mask))"
-        fi
+        # 2026-10-28: the rung that used to live here claimed the address with
+        # `cec-ctl --playback`. It does put a mask on the wire, but libCEC is
+        # left without an address and never retries, so the service reported
+        # success while the TV remote stayed dead (outage of 2026-10-27 17:52,
+        # found 2026-10-28). A libCEC-owned address only comes back from a Kodi
+        # restart, which `settle_and_verify` already performs; when that fails
+        # the module reload below is the remaining rung.
 
         # 2026-10-26: after an HDMI HPD burst the controller can stay in
         # CEC_STAT_ERROR_INIT, so restarting Kodi is not enough. Reloading the
         # module re-initialises the block and lets Kodi claim the address again.
+        #
+        # KNOWN HAZARD (backlog #49): this unloads the module while Kodi still
+        # holds /dev/cec0, which is a use-after-free in cec_devnode_release and
+        # costs a power cycle. Reordering it (stop the kiosk, wait for kodi.bin
+        # to exit, reload, start) has to be replayed on the board first.
         echo "Reloading dw_hdmi_cec to re-initialise the CEC controller"
         ${pkgs.kmod}/bin/modprobe -r dw_hdmi_cec 2>/dev/null || true
         ${pkgs.kmod}/bin/modprobe dw_hdmi_cec 2>/dev/null || true
