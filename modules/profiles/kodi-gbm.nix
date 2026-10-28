@@ -286,8 +286,12 @@ in
         TTYReset = "yes";
         TTYVHangup = "yes";
         StandardInput = "tty";
-        StandardOutput = "journal+console";
-        StandardError = "journal+console";
+        # The VT stays allocated (StandardInput=tty + TTYPath), but Kodi's own
+        # output no longer paints the TV: with `journal+console` and the kernel
+        # default `loglevel=7`, every restart showed a screenful of logs in the
+        # ~40 s before Kodi takes DRM master (observed 2026-10-28).
+        StandardOutput = "journal";
+        StandardError = "journal";
         ExecStart = "${kodiPackage}/bin/kodi --standalone --windowing=gbm";
         Restart = "always";
         # SIGTERM (128+15) is how hdmi-cec-hotplug stops Kodi on purpose.
@@ -511,6 +515,15 @@ in
     nix.registry = lib.mkForce { };
 
     boot.kernelParams = cfg.extraKernelParams;
+
+    # The appliance's only display is the TV, and the VT behind Kodi is what
+    # shows during the ~40 s of a kiosk restart. `modules/family/sunxi64.nix`
+    # keeps the board-level default at 7 (useful on a UART during bring-up),
+    # so the kiosk overrides it at priority 50: it beats that `mkDefault`
+    # without blocking a consumer's own plain definition.
+    # Measured 2026-10-28: a screenful of kernel debug lines after each HPD
+    # recovery; warnings and above are enough to diagnose a boot failure.
+    boot.consoleLogLevel = lib.mkOverride 50 3;
 
     # The module is pruned from the nixbian kernel unless it is in the module
     # allowlist; `boot.kernelModules` adds it and loads it at boot.
