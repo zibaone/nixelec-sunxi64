@@ -13,37 +13,12 @@
         # Evaluation only: fast, and enough to catch a renamed option or a
         # module that no longer resolves.
         eval-orangepizero3 = pkgs.runCommand "check-eval-orangepizero3" { } ''
-          echo ${builtins.unsafeDiscardStringContext self.nixosConfigurations.orangepizero3-kodi.config.system.build.toplevel.drvPath} > $out
+          echo ${builtins.unsafeDiscardStringContext self.nixosConfigurations.orangepizero3.config.system.build.toplevel.drvPath} > $out
         '';
 
-        eval-orangepizero3-addons = pkgs.runCommand "check-eval-orangepizero3-addons" { } ''
-          echo ${builtins.unsafeDiscardStringContext self.nixosConfigurations.orangepizero3-kodi-addons.config.system.build.toplevel.drvPath} > $out
+        eval-orangepizero3-cache = pkgs.runCommand "check-eval-orangepizero3-cache" { } ''
+          echo ${builtins.unsafeDiscardStringContext self.nixosConfigurations.orangepizero3-cache.config.system.build.toplevel.drvPath} > $out
         '';
-
-        kodi-cec-addons =
-          pkgs.runCommand "check-kodi-cec-addons"
-            {
-              cecReprobe = builtins.toJSON (
-                builtins.hasAttr "hdmi-cec-reprobe" self.nixosConfigurations.orangepizero3-kodi.config.systemd.services
-              );
-              cecDefaults = builtins.toJSON (
-                builtins.hasAttr "kodi-cec-defaults" self.nixosConfigurations.orangepizero3-kodi.config.systemd.services
-              );
-              addonsUnit = builtins.toJSON (
-                builtins.hasAttr "kodi-addons" self.nixosConfigurations.orangepizero3-kodi-addons.config.systemd.services
-              );
-              kernelModules = builtins.toJSON (
-                self.nixosConfigurations.orangepizero3-kodi.config.boot.kernelModules
-              );
-            }
-            ''
-              set -euo pipefail
-              test "$cecReprobe" = "true"
-              test "$cecDefaults" = "true"
-              test "$addonsUnit" = "true"
-              echo "$kernelModules" | grep -q '"dw-hdmi-cec"'
-              touch $out
-            '';
 
         # Builtin mode must load neither the module, nor the softdep, nor the
         # rebind service. We test option wiring with a prebuilt kernel
@@ -53,14 +28,14 @@
             # Default is builtin since P3.2: the family kernel carries the
             # symbol, so nothing is loaded from the initrd and no rebind runs.
             # `module` stays the rollback wiring (with a kernel that has =m).
-            moduleMode = self.nixosConfigurations.orangepizero3-kodi.extendModules {
+            moduleMode = self.nixosConfigurations.orangepizero3.extendModules {
               modules = [
                 {
                   nixelec.prcmPpu.mode = "module";
                 }
               ];
             };
-            builtinWithKernel = self.nixosConfigurations.orangepizero3-kodi.extendModules {
+            builtinWithKernel = self.nixosConfigurations.orangepizero3.extendModules {
               modules = [
                 {
                   nixelec.prcmPpu.mode = "builtin";
@@ -68,7 +43,7 @@
                 }
               ];
             };
-            builtinWithConsumer = self.nixosConfigurations.orangepizero3-kodi.extendModules {
+            builtinWithConsumer = self.nixosConfigurations.orangepizero3.extendModules {
               modules = [
                 {
                   nixelec.prcmPpu.mode = "builtin";
@@ -80,13 +55,13 @@
           in
           pkgs.runCommand "check-prcm-ppu-loading"
             {
-              defaultInitrd = builtins.toJSON self.nixosConfigurations.orangepizero3-kodi.config.boot.initrd.kernelModules;
-              defaultModules = builtins.toJSON self.nixosConfigurations.orangepizero3-kodi.config.boot.kernelModules;
+              defaultInitrd = builtins.toJSON self.nixosConfigurations.orangepizero3.config.boot.initrd.kernelModules;
+              defaultModules = builtins.toJSON self.nixosConfigurations.orangepizero3.config.boot.kernelModules;
               moduleInitrd = builtins.toJSON moduleMode.config.boot.initrd.kernelModules;
               moduleModules = builtins.toJSON moduleMode.config.boot.kernelModules;
               builtinExtraConfig = builtinWithKernel.config.hardware.nixbian.extraConfig;
               consumerExtraConfig = builtinWithConsumer.config.hardware.nixbian.extraConfig;
-              defaultRebind = builtins.hasAttr "panfrost-rebind" self.nixosConfigurations.orangepizero3-kodi.config.systemd.services;
+              defaultRebind = builtins.hasAttr "panfrost-rebind" self.nixosConfigurations.orangepizero3.config.systemd.services;
               moduleRebind = builtins.hasAttr "panfrost-rebind" moduleMode.config.systemd.services;
             }
             ''
@@ -111,25 +86,10 @@
         # drops it, the image boots without the power domain and the CI would
         # stay green. The `.config` derivation builds in ~1 s on x86.
         prcm-ppu-default-config = pkgs.runCommand "check-prcm-ppu-default-config" { } ''
-          last=$(grep '^CONFIG_SUN50I_H6_PRCM_PPU=' ${self.nixosConfigurations.orangepizero3-kodi.config.boot.kernelPackages.kernel.configfile} | tail -1)
+          last=$(grep '^CONFIG_SUN50I_H6_PRCM_PPU=' ${self.nixosConfigurations.orangepizero3.config.boot.kernelPackages.kernel.configfile} | tail -1)
           test "$last" = "CONFIG_SUN50I_H6_PRCM_PPU=y"
           touch $out
         '';
-
-        # `switch` must not restart Kodi: systemctl restart of a
-        # `Restart = "always"` unit can fail and makes the switch return 4.
-        kodi-restart-policy =
-          pkgs.runCommand "check-kodi-restart-policy"
-            {
-              restartIfChanged = builtins.toJSON self.nixosConfigurations.orangepizero3-kodi.config.systemd.services.kodi-gbm.restartIfChanged;
-              restart = builtins.toJSON self.nixosConfigurations.orangepizero3-kodi.config.systemd.services.kodi-gbm.serviceConfig.Restart;
-            }
-            ''
-              set -euo pipefail
-              test "$restartIfChanged" = "false"
-              test "$restart" = '"always"'
-              touch $out
-            '';
 
         formatting =
           pkgs.runCommand "check-nixfmt"
@@ -145,7 +105,7 @@
     // lib.optionalAttrs (system == "aarch64-linux") {
       checks.prcm-ppu-builtin-config =
         let
-          builtin = self.nixosConfigurations.orangepizero3-kodi.extendModules {
+          builtin = self.nixosConfigurations.orangepizero3.extendModules {
             modules = [
               {
                 nixelec.prcmPpu.mode = "builtin";

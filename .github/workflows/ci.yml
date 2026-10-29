@@ -48,22 +48,22 @@ jobs:
       - name: Evaluate the aarch64 toplevel and image (no build)
         run: |
           set -euo pipefail
-          nix eval --raw .#nixosConfigurations.orangepizero3-kodi.config.system.build.toplevel.drvPath
+          nix eval --raw .#nixosConfigurations.orangepizero3.config.system.build.toplevel.drvPath
           nix eval --raw .#packages.aarch64-linux.orangepizero3-sd-image.drvPath
 
       - name: Structural checks
         run: |
           set -euo pipefail
           # U-Boot must be written at offset 8 KiB, otherwise the image does not boot.
-          nix eval --raw .#nixosConfigurations.orangepizero3-kodi.config.sdImage.postBuildCommands |
+          nix eval --raw .#nixosConfigurations.orangepizero3.config.sdImage.postBuildCommands |
             grep -q 'seek=8'
           # The DTB must be the H618 one.
-          nix eval --raw .#nixosConfigurations.orangepizero3-kodi.config.hardware.deviceTree.name |
+          nix eval --raw .#nixosConfigurations.orangepizero3.config.hardware.deviceTree.name |
             grep -q 'sun50i-h618-orangepi-zero3.dtb'
           # HDMI audio: both pruned modules must be put back.
-          nix eval --json .#nixosConfigurations.orangepizero3-kodi.config.boot.kernelModules |
+          nix eval --json .#nixosConfigurations.orangepizero3.config.boot.kernelModules |
             grep -q 'dw-hdmi-i2s-audio'
-          nix eval --json .#nixosConfigurations.orangepizero3-kodi.config.boot.kernelModules |
+          nix eval --json .#nixosConfigurations.orangepizero3.config.boot.kernelModules |
             grep -q 'snd-soc-hdmi-codec'
 
       - name: Dry-run the aarch64 image
@@ -78,9 +78,9 @@ jobs:
         run: |
           {
             echo "## Evaluation"
-            echo "- kernel: $(nix eval --raw .#nixosConfigurations.orangepizero3-kodi.config.boot.kernelPackages.kernel.version)"
-            echo "- DTB: $(nix eval --raw .#nixosConfigurations.orangepizero3-kodi.config.hardware.deviceTree.name)"
-            echo "- image: $(nix eval --raw .#nixosConfigurations.orangepizero3-kodi.config.image.fileName)"
+            echo "- kernel: $(nix eval --raw .#nixosConfigurations.orangepizero3.config.boot.kernelPackages.kernel.version)"
+            echo "- DTB: $(nix eval --raw .#nixosConfigurations.orangepizero3.config.hardware.deviceTree.name)"
+            echo "- image: $(nix eval --raw .#nixosConfigurations.orangepizero3.config.image.fileName)"
             echo
             echo "## Image dry-run"
             echo '```'
@@ -179,7 +179,7 @@ jobs:
             override=(--override-input nixpkgs "github:NixOS/nixpkgs/${NIXPKGS_REV}")
           fi
           nix build "${override[@]}" -L \
-            .#nixosConfigurations.orangepizero3-kodi-cache.config.system.build.toplevel \
+            .#nixosConfigurations.orangepizero3-cache.config.system.build.toplevel \
             .#packages.aarch64-linux.uwe5622 \
             .#packages.aarch64-linux.kernel-dev
 
@@ -193,7 +193,7 @@ jobs:
           if [ -n "${NIXPKGS_REV:-}" ]; then
             override=(--override-input nixpkgs "github:NixOS/nixpkgs/${NIXPKGS_REV}")
           fi
-          toplevel=$(nix path-info "${override[@]}" .#nixosConfigurations.orangepizero3-kodi-cache.config.system.build.toplevel)
+          toplevel=$(nix path-info "${override[@]}" .#nixosConfigurations.orangepizero3-cache.config.system.build.toplevel)
           driver=$(nix path-info "${override[@]}" .#packages.aarch64-linux.uwe5622)
           kernel_dev=$(nix path-info "${override[@]}" .#packages.aarch64-linux.kernel-dev)
           cachix push "$CACHE" "$toplevel" "$driver" "$kernel_dev"
@@ -295,7 +295,7 @@ jobs:
           if [ -n "${NIXPKGS_REV:-}" ]; then
             override=(--override-input nixpkgs "github:NixOS/nixpkgs/${NIXPKGS_REV}")
           fi
-          toplevel=$(nix path-info "${override[@]}" .#nixosConfigurations.orangepizero3-kodi.config.system.build.toplevel)
+          toplevel=$(nix path-info "${override[@]}" .#nixosConfigurations.orangepizero3.config.system.build.toplevel)
           image=$(nix path-info "${override[@]}" .#packages.aarch64-linux.orangepizero3-sd-image)
           cachix push "$CACHE" "$toplevel" "$image"
           for p in "$toplevel" "$image"; do
