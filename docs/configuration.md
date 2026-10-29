@@ -11,7 +11,7 @@ board, the Kodi profile and the image module, then set the options you need.
     nixelec.nixosModules.sd-image
   ];
 
-  nixelec.kodi.enable = true;
+  nixelec.kiosk.enable = true;
 }
 ```
 
@@ -22,31 +22,53 @@ also want the public add-ons.
 
 ## Kodi
 
+The kiosk module lives in the neutral layer
+[`nixelec-kiosk`](https://github.com/zibaone/nixelec-kiosk); this repository
+re-exports it as `nixosModules.kodi-gbm` and wires the board facts
+(`nixelec.platform.*`) into the kiosk options. Option names below are the
+neutral layer's.
+
 | Option | Default | Purpose |
 |---|---|---|
-| `nixelec.kodi.enable` | `false` | Enable the Kodi GBM kiosk (no compositor). |
-| `nixelec.kodi.package` | `pkgs.kodi-gbm` | Kodi package to launch; the `kodi-gbm` module replaces it with the v4l2-request kiosk build. |
-| `nixelec.kodi.user` | `kodi` | User that runs Kodi. |
-| `nixelec.kodi.home` | `/var/lib/kodi` | Kodi home directory. |
-| `nixelec.kodi.extraGroups` | video, audio, input, render, tty | Extra groups for the Kodi user. |
-| `nixelec.kodi.extraKernelParams` | `[]` | Extra kernel parameters, for example `video=HDMI-A-1:1920x1080@60`. |
-| `nixelec.kodi.uiSounds` | `false` | Disable Kodi UI sounds (`guisoundmode=0`, empty sound skin). |
-| `nixelec.kodi.homeMenu.hidden` | `[]` | Estuary home-menu entries to hide. |
-| `nixelec.kodi.addons` | `null` | Function that adds packages to the Kodi package set. |
-| `nixelec.kodi.autoEnableAddons` | `[]` | Add-on IDs enabled at boot through JSON-RPC. |
-| `nixelec.kodi.webServer.enable` | `false` | Kodi web server, HTTP Basic. |
-| `nixelec.kodi.webServer.passwordFile` | `null` | Runtime file containing the web-server password. |
-| `nixelec.kodi.webServer.username` | `kodi` | Web-server username. |
-| `nixelec.kodi.webServer.port` | `8080` | Web-server port. |
-| `nixelec.kodi.cec.enable` | `false` | HDMI-CEC helper services. |
+| `nixelec.kiosk.enable` | `false` | Enable the Kodi GBM kiosk (no compositor). |
+| `nixelec.kiosk.package` | board's `nixelec.platform.kodiPackage` | Kodi package to launch. No default in the neutral layer: the `kodi-gbm` module supplies the v4l2-request kiosk build. |
+| `nixelec.kiosk.user` | `kodi` | User that runs Kodi. |
+| `nixelec.kiosk.home` | `/var/lib/kodi` | Kodi home directory. |
+| `nixelec.kiosk.extraGroups` | video, audio, input, render, tty | Extra groups for the Kodi user. |
+| `nixelec.kiosk.extraKernelParams` | `[]` | Extra kernel parameters, for example `video=HDMI-A-1:1920x1080@60`. Only defined when non-empty. |
+| `nixelec.kiosk.uiSounds` | `false` | Disable Kodi UI sounds (`guisoundmode=0`, empty sound skin). |
+| `nixelec.kiosk.homeMenu.hidden` | `[]` | Estuary home-menu entries to hide. |
+| `nixelec.kiosk.addons` | `null` | Function that adds packages to the Kodi package set. |
+| `nixelec.kiosk.autoEnableAddons` | `[]` | Add-on IDs enabled at boot through JSON-RPC. |
+| `nixelec.kiosk.webServer.enable` | `false` | Kodi web server, HTTP Basic. |
+| `nixelec.kiosk.webServer.passwordFile` | `null` | Runtime file containing the web-server password. |
+| `nixelec.kiosk.webServer.username` | `kodi` | Web-server username. |
+| `nixelec.kiosk.webServer.port` | `8080` | Web-server port. |
+| `nixelec.kiosk.cec.enable` | `false` | HDMI-CEC helper services. |
+| `nixelec.kiosk.cec.driver` | board's `nixelec.platform.cecDriver` | Kernel CEC module; `null` keeps the kernel CEC units off (USB libCEC adapters still work). |
+| `nixelec.kiosk.cec.connector` | `card0-` + board's `hdmiConnector` | DRM connector watched before a hotplug restart. |
+| `nixelec.kiosk.watchdog.enable` | board's `nixelec.platform.watchdog.enable` | systemd hardware watchdog (`sunxi-wdt`, 16 s cap published as `maxTimeout`). |
+
+## Board facts
+
+The board layer publishes `nixelec.platform.*`; it never sets
+`nixelec.kiosk.*`. On H616/H618:
+
+| Fact | Value |
+|---|---|
+| `cecDriver` | `"dw-hdmi-cec"` |
+| `hdmiConnector` | `"HDMI-A-1"` |
+| `videoMode` | `"1920x1080@60"` (preference, never forced with `D`) |
+| `watchdog.enable` / `watchdog.maxTimeout` | `true` / `16` (sunxi-wdt `max_timeout`, measured) |
+| `kodiPackage` | the `nix-v4l2-request` kiosk build (set by `nixosModules.kodi-gbm`) |
 
 ### Add-ons
 
-`nixelec.kodi.addons` receives the Kodi package set. nixpkgs uses hyphens in
+`nixelec.kiosk.addons` receives the Kodi package set. nixpkgs uses hyphens in
 attribute names, while Kodi uses dots in add-on IDs:
 
 ```nix
-nixelec.kodi.addons =
+nixelec.kiosk.addons =
   kodi:
   with kodi;
   [
@@ -56,7 +78,7 @@ nixelec.kodi.addons =
     pvr-iptvsimple
   ];
 
-nixelec.kodi.autoEnableAddons = [
+nixelec.kiosk.autoEnableAddons = [
   "inputstream.adaptive"
   "inputstream.ffmpegdirect"
   "inputstream.rtmp"
@@ -74,7 +96,7 @@ socket after Kodi starts. It stays independent from the Kodi restart cycle so a
 Enable the web server only when the password file exists at boot:
 
 ```nix
-nixelec.kodi.webServer = {
+nixelec.kiosk.webServer = {
   enable = true;
   passwordFile = "/run/secrets/kodi-web";
 };
@@ -87,7 +109,7 @@ intentional.
 ### CEC
 
 ```nix
-nixelec.kodi.cec = {
+nixelec.kiosk.cec = {
   enable = true;
   standbyPcOnTvStandby = "ignore";
   reprobeOnBoot = true;

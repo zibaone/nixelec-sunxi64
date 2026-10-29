@@ -14,7 +14,7 @@ consumer.
 | nixbian kernel, DTB, U-Boot, extlinux | WiFi PSK, SSH keys, root password |
 | H616/H618 quirks: GPU power domain, HDMI audio, `cma` | Fleet identity and provisioning |
 | Allwinner SD image (U-Boot at 8 KiB) | Private Kodi add-ons |
-| Kodi GBM kiosk, CEC helpers, public add-on options | Consumer-specific deployment |
+| Kodi GBM kiosk (re-exported from `nixelec-kiosk`), CEC, board facts | Consumer-specific deployment |
 | UWE5622 driver + firmware (optional) | |
 
 Hardware validation is tracked separately from evaluation; see
@@ -24,10 +24,9 @@ Hardware validation is tracked separately from evaluation; see
 
 ```
 modules/
-  family/sunxi64.nix             common H616/H618 quirks
+  family/sunxi64.nix             common H616/H618 quirks, nixelec.platform.* facts
   boards/orangepizero3.nix       board, edge kernel, cma
   image/sunxi-sd.nix             SD image, U-Boot at 8 KiB
-  profiles/kodi-gbm.nix          Kodi GBM kiosk, CEC, add-ons
   services/wifi-uwe5622.nix      optional WiFi driver/firmware
 packages/
   uwe5622/                       out-of-tree driver
@@ -63,8 +62,8 @@ For a custom configuration, import the modules and supply runtime secrets:
     nixelec.nixosModules.sd-image
   ];
 
-  nixelec.kodi.enable = true;
-  nixelec.kodi.cec.enable = true;
+  nixelec.kiosk.enable = true;
+  nixelec.kiosk.cec.enable = true;
 
   # The PSK is read at boot and never stored in the Nix store.
   nixelec.wifi.enable = true;

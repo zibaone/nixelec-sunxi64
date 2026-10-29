@@ -95,9 +95,9 @@ nix build .#packages.aarch64-linux.orangepizero3-sd-image
 ## Kodi add-ons
 
 nixpkgs attribute names use hyphens (`inputstream-adaptive`); Kodi add-on IDs use
-dots (`inputstream.adaptive`). `nixelec.kodi.addons` receives the Kodi package
-set and adds packages to the closure. `nixelec.kodi.autoEnableAddons` contains the
+dots (`inputstream.adaptive`). `nixelec.kiosk.addons` receives the Kodi package
+set and adds packages to the closure. `nixelec.kiosk.autoEnableAddons` contains the
 IDs passed to `Addons.SetAddonEnabled` at boot.
 
 Keep private or consumer-specific add-ons out of this repository. A consumer can
-override `nixelec.kodi.package` with its own `withPackages` call.
+override `nixelec.kiosk.package` with its own `withPackages` call.

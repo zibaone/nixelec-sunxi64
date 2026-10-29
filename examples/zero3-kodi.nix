@@ -5,7 +5,7 @@
   time.timeZone = lib.mkDefault "Europe/Paris";
   system.stateVersion = "26.05";
 
-  nixelec.kodi = {
+  nixelec.kiosk = {
     enable = true;
     extraKernelParams = [
       "video=HDMI-A-1:1920x1080@60"

@@ -1,6 +1,7 @@
 {
   config,
   lib,
+  options,
   pkgs,
   ...
 }:
@@ -180,5 +181,25 @@ in
         hardware.nixbian.extraConfig = lib.mkAfter "CONFIG_SUN50I_H6_PRCM_PPU=y\n";
       }
     )
+
+    # Faits H616/H618 pour la couche kiosque (`nixelec-kiosk`). Publiés
+    # uniquement quand cette couche est importée : `nixelec.platform` n'existe
+    # pas sur une image serveur, et un module ne doit pas créer d'option
+    # fantôme. Ce sont des FAITS : la carte ne pose jamais `nixelec.kiosk.*`.
+    #
+    # Mesuré sur la Zero 3 : CEC natif du HDMI en dw-hdmi, connecteur
+    # `HDMI-A-1` (le mode 1080p60 est une préférence, jamais `D`), watchdog
+    # sunxi-wdt plafonné à 16 s (`max_timeout`).
+    (lib.optionalAttrs (options ? nixelec.platform) {
+      nixelec.platform = {
+        cecDriver = lib.mkDefault "dw-hdmi-cec";
+        hdmiConnector = lib.mkDefault "HDMI-A-1";
+        videoMode = lib.mkDefault "1920x1080@60";
+        watchdog = {
+          enable = lib.mkDefault true;
+          maxTimeout = lib.mkDefault 16;
+        };
+      };
+    })
   ];
 }

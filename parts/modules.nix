@@ -65,17 +65,48 @@ in
       };
 
     # Kodi GBM kiosk, no compositor, no private addons.
+    #
+    # Le module vit désormais dans la couche neutre `nixelec-kiosk` : ce
+    # réexport garde l'API historique et fait le câblage faits → options,
+    # puisque ce fichier est le seul de la couche à voir les deux étages. La
+    # couche carte, elle, ne pose aucune option `nixelec.kiosk.*`.
     kodi-gbm =
-      { pkgs, ... }:
       {
-        imports = [ ../modules/profiles/kodi-gbm.nix ];
+        config,
+        lib,
+        pkgs,
+        ...
+      }:
+      {
+        imports = [ inputs.nixelec-kiosk.nixosModules.kodi-gbm ];
 
         nixpkgs.overlays = [
           inputs.v4l2request.overlays.default
           inputs.v4l2request.overlays.kiosk
         ];
 
-        nixelec.kodi.package = inputs.v4l2request.packages.${pkgs.stdenv.hostPlatform.system}.kodi-kiosk;
+        # Le paquet est un choix de plateforme, pas de la couche kiosque.
+        # `nixelec.kiosk.package` n'a volontairement aucun défaut là-bas : sur
+        # un SBC, un `pkgs.kodi-gbm` implicite décoderait en CPU sans le dire.
+        nixelec.platform.kodiPackage = lib.mkDefault (
+          inputs.v4l2request.packages.${pkgs.stdenv.hostPlatform.system}.kodi-kiosk
+        );
+
+        nixelec.kiosk = {
+          package = lib.mkDefault config.nixelec.platform.kodiPackage;
+          cec = {
+            driver = lib.mkDefault config.nixelec.platform.cecDriver;
+            # `cec.connector` attend le nom sysfs complet (préfixe carte) ;
+            # le fait `hdmiConnector` est le nom noyau.
+            connector = lib.mkDefault (
+              if config.nixelec.platform.hdmiConnector == null then
+                null
+              else
+                "card0-${config.nixelec.platform.hdmiConnector}"
+            );
+          };
+          watchdog.enable = lib.mkDefault config.nixelec.platform.watchdog.enable;
+        };
       };
 
     # UWE5622 WiFi: driver, firmware, wpa_supplicant. Disabled by default.

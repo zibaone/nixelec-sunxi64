@@ -79,7 +79,7 @@ not contain a PSK.
 The modules never put secrets in the Nix store. They read paths at runtime:
 
 - `nixelec.wifi.pskFile` for the WiFi PSK;
-- `nixelec.kodi.webServer.passwordFile` for the Kodi web server.
+- `nixelec.kiosk.webServer.passwordFile` for the Kodi web server.
 
 Generate those files with your secret mechanism (agenix, sops-nix, tmpfs or a
 manual file under `/run`). The web server fails closed if the password file is
