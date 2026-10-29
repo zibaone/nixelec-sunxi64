@@ -7,15 +7,14 @@ the board**. An unchecked box is not a promise.
 
 | Check | Command | Status |
 |---|---|---|
-| Toplevel evaluation | `nix eval .#nixosConfigurations.orangepizero3-kodi.config.system.build.toplevel.drvPath` | verified on 2026-10-25 |
-| Add-ons example evaluation | `nix eval .#nixosConfigurations.orangepizero3-kodi-addons.config.system.build.toplevel.drvPath` | verified on 2026-10-25 |
+| Toplevel evaluation | `nix eval .#nixosConfigurations.orangepizero3.config.system.build.toplevel.drvPath` | verified on 2026-10-25 |
+| WiFi cache evaluation | `nix eval .#nixosConfigurations.orangepizero3-cache.config.system.build.toplevel.drvPath` | verified on 2026-10-29 |
 | Eval + format | `nix flake check --system x86_64-linux` | verified on 2026-10-25 |
 | CEC/add-on unit wiring | `nix build .#checks.x86_64-linux.kodi-cec-addons` | verified on 2026-10-25 |
 | SD image build | `nix build .#packages.aarch64-linux.orangepizero3-sd-image` | built locally on 2026-10-24; U-Boot at offset 8 KiB verified |
 | SD image boot | spare SD, cold boot on 2026-10-25 | nixelec layout (`FIRMWARE` + `NIXOS_SD`), U-Boot at 8 KiB, CEC `/dev/cec0`, WiFi, NTP, Kodi and 8080 validated |
 | UWE5622 firmware | `nix build .#uwe5622-firmware` | verified on 2026-10-24 |
 | Kernel/U-Boot/Kodi parity | `drvPath` comparison against the reference pins | verified on 2026-10-24 |
-| `v4l2request` pin | `flake.lock` comparison + `kodi-kiosk` `drvPath` | verified on 2026-10-25 (`885d9a0b`, `qb66fcbh…`) |
 | PPU modes `module` / `builtin` | `nix build .#checks.x86_64-linux.prcm-ppu-loading` | verified on 2026-10-24 |
 | Kodi restart policy | `nix build .#checks.x86_64-linux.kodi-restart-policy` + generated unit | verified on 2026-10-25 (`X-RestartIfChanged=false`) |
 | Builtin kernel `CONFIG_SUN50I_H6_PRCM_PPU=y` | `nix build .#checks.aarch64-linux.prcm-ppu-builtin-config` | to run on an ARM runner |
@@ -41,13 +40,13 @@ That pin is one CI commit before `v0.4.0` and carries both sunxi audio patches
 | WiFi | `wlan0` associated, stable RTT | validated with `nixelec.wifi` on 2026-10-25 (5 GHz, power save off, cold boot); not replayed with this image |
 | WiFi regulatory DB | `/run/current-system/firmware/regulatory.db` uncompressed | validated on cold boot 2026-10-25: no `failed to load regulatory.db`; fix in `c0580bf` |
 | mDNS stack | `resolvectl` shows `-mDNS`; only Avahi listens on 5353 | validated on cold boot 2026-10-25: no duplicate-stack warning; fix in `c0580bf` |
-| CPU governor | `cat /sys/devices/system/cpu/cpufreq/policy0/scaling_governor` | validated on the reference board on 2026-10-27: `schedutil` (it read `ondemand` before) from `nixelec.kiosk.cpuGovernor`; `cpu-governor` active, exit 0 |
+| CPU governor | `cat /sys/devices/system/cpu/cpufreq/policy0/scaling_governor` | validated on the reference board on 2026-10-27: `schedutil` (it read `ondemand` before) from the kiosk profile (module now in `nixelec-kiosk`); `cpu-governor` active, exit 0 |
 | Hardware watchdog | `systemctl show -p RuntimeWatchdogUSec -p RebootWatchdogUSec` + `/sys/class/watchdog/watchdog0` | validated on the reference board on 2026-10-27: `15s`/`15s`, `state=active`, `timeleft=15`, 0 failed units, no reboot needed to arm it |
 | VPU decode | `v4l2-ctl --list-devices` + 1080p playback | Kodi opened `CDVDVideoCodecDRMPRIME` on a 1080p sample; CPU measurement pending; not replayed with this image |
 | Kodi web server | `0.0.0.0:8080`, HTTP Basic; 401 without auth, 200 with | validated on the reference board on 2026-10-24; not replayed with this image |
 | Kodi UI sounds | `audiooutput.guisoundmode=0`, empty `lookandfeel.soundskin` | validated on the reference board on 2026-10-24; not replayed with this image |
 | Estuary home menu | `addon_data/skin.estuary/settings.xml` + Kodi log | validated on the reference board on 2026-10-25: `music`, `weather`, `musicvideos`, `radio`, `pictures` and `games` hidden; feature in `3f69e84` |
-| CEC cold boot / TV standby | `cec-ctl -S`, Kodi CEC settings | validated on the reference board on 2026-10-25 (`hdmi-cec-reprobe`, `standby_pc_on_tv_standby=36028`). The same workaround is in `nixelec.kiosk.cec`; hotplug recovery is opt-in and not replayed with this image |
+| CEC cold boot / TV standby | `cec-ctl -S`, Kodi CEC settings | validated on the reference board on 2026-10-25 (`hdmi-cec-reprobe`, `standby_pc_on_tv_standby=36028`). The same workaround now lives in `nixelec-kiosk` (`nixelec.kiosk.cec`); hotplug recovery is opt-in and not replayed with this image |
 
 ## Sources
 

@@ -5,7 +5,7 @@
 - `modules/family/`: quirks shared by the H616/H618 family.
 - `modules/boards/`: one module per board (board name, kernel vendor, CMA).
 - `modules/image/`: Allwinner SD image layout and U-Boot placement.
-- `modules/profiles/`: the Kodi GBM kiosk and its CEC/add-on helpers.
+- `modules/profiles/`: removed — the kiosk lives in `nixelec-kiosk`.
 - `modules/services/`: optional services, currently UWE5622 WiFi.
 - `packages/`: out-of-tree driver and firmware derivations.
 - `parts/`: flake outputs (modules, configurations, packages, checks).
@@ -56,12 +56,15 @@ Store paths are content-addressed. Keep these aligned with the cache you want to
 reuse:
 
 - `nixpkgs`;
-- `nixbian`;
-- `v4l2request`.
+- `nixbian`.
 
 The current pins are visible with `nix flake metadata`. Bumping one without the
-others can recompile the kernel, Kodi or U-Boot under emulation. Prefer a
-deliberate bump plus a cache refill.
+others can recompile the kernel or U-Boot under emulation. Prefer a deliberate
+bump plus a cache refill.
+
+`nix-v4l2-request` is no longer pinned here: it belongs to whoever imports the
+kiosk layer. A consumer that shares a cache must keep its own `v4l2request` pin
+aligned with the kiosk it builds.
 
 The default configuration uses the nixbian family kernel. `nixelec.kernelPackage
 = null` hands control back to nixbian's per-board kernel; the `builtin` PPU
@@ -94,10 +97,8 @@ nix build .#packages.aarch64-linux.orangepizero3-sd-image
 
 ## Kodi add-ons
 
-nixpkgs attribute names use hyphens (`inputstream-adaptive`); Kodi add-on IDs use
-dots (`inputstream.adaptive`). `nixelec.kiosk.addons` receives the Kodi package
-set and adds packages to the closure. `nixelec.kiosk.autoEnableAddons` contains the
-IDs passed to `Addons.SetAddonEnabled` at boot.
-
-Keep private or consumer-specific add-ons out of this repository. A consumer can
-override `nixelec.kiosk.package` with its own `withPackages` call.
+They belong to the neutral layer: see
+[`nixelec-kiosk/docs/contrat.md`](https://github.com/zibaone/nixelec-kiosk/blob/main/docs/contrat.md).
+This repository ships no player, so it has no add-on options. A consumer can
+override `nixelec.kiosk.package` with its own `withPackages` call, but private
+add-ons stay out of every public repository.

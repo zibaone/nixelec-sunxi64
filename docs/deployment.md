@@ -17,7 +17,7 @@ The result is a directory under `result/sd-image/` containing the `.img` file.
 Evaluation without building works on any host:
 
 ```bash
-nix eval --raw .#nixosConfigurations.orangepizero3-kodi.config.system.build.sdImage
+nix eval --raw .#nixosConfigurations.orangepizero3.config.system.build.sdImage
 ```
 
 ## Flash
@@ -79,7 +79,8 @@ not contain a PSK.
 The modules never put secrets in the Nix store. They read paths at runtime:
 
 - `nixelec.wifi.pskFile` for the WiFi PSK;
-- `nixelec.kiosk.webServer.passwordFile` for the Kodi web server.
+- the Kodi web-server password (`nixelec.kiosk.webServer.passwordFile`) if the
+  kiosk layer is imported.
 
 Generate those files with your secret mechanism (agenix, sops-nix, tmpfs or a
 manual file under `/run`). The web server fails closed if the password file is

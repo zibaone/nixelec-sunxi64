@@ -1,7 +1,12 @@
 # nixelec-sunxi64
 
 Reusable NixOS layer for Allwinner H616/H618 boards. First target: **Orange Pi
-Zero 3** with a Kodi GBM kiosk.
+Zero 3**.
+
+This repository is the **card layer**: kernel, DTB, boot chain, image, WiFi. It
+publishes the board facts (`nixelec.platform.*`) and nothing about the player.
+The Kodi GBM kiosk lives in [`nixelec-kiosk`](https://github.com/zibaone/nixelec-kiosk);
+the wiring between the two layers belongs to the consumer's profile.
 
 This repository contains public appliance code only. Runtime secrets are files
 read at boot; fleet identity, provisioning and private add-ons belong to the
@@ -13,8 +18,8 @@ consumer.
 |---|---|
 | nixbian kernel, DTB, U-Boot, extlinux | WiFi PSK, SSH keys, root password |
 | H616/H618 quirks: GPU power domain, HDMI audio, `cma` | Fleet identity and provisioning |
-| Allwinner SD image (U-Boot at 8 KiB) | Private Kodi add-ons |
-| Kodi GBM kiosk (re-exported from `nixelec-kiosk`), CEC, board facts | Consumer-specific deployment |
+| Allwinner SD image (U-Boot at 8 KiB) | Kodi, add-ons, kiosk policy (`nixelec-kiosk`) |
+| Board facts `nixelec.platform.*` (CEC driver, HDMI connector, video mode, watchdog) | Consumer-specific deployment |
 | UWE5622 driver + firmware (optional) | |
 
 Hardware validation is tracked separately from evaluation; see
@@ -32,10 +37,8 @@ packages/
   uwe5622/                       out-of-tree driver
   uwe5622-firmware/              firmware + RF calibration
 examples/
-  zero3-kodi.nix                 base configuration (UI, menu, CEC)
-  zero3-kodi-addons.nix          public add-ons enabled at boot
-  zero3-kodi-builtin.nix         PPU built-in variant
-  zero3-kodi-cache.nix           cache build with WiFi
+  zero3-base.nix                 base configuration (no player)
+  zero3-cache.nix                base + WiFi driver/firmware, no association
 ```
 
 ## Quick start
@@ -48,8 +51,8 @@ nix flake check --system x86_64-linux
 nix build .#packages.aarch64-linux.orangepizero3-sd-image
 
 # Evaluate a configuration without building
-nix eval .#nixosConfigurations.orangepizero3-kodi.config.system.build.toplevel.drvPath
-nix eval .#nixosConfigurations.orangepizero3-kodi-addons.config.system.build.toplevel.drvPath
+nix eval .#nixosConfigurations.orangepizero3.config.system.build.toplevel.drvPath
+nix eval .#nixosConfigurations.orangepizero3-cache.config.system.build.toplevel.drvPath
 ```
 
 For a custom configuration, import the modules and supply runtime secrets:
@@ -58,12 +61,8 @@ For a custom configuration, import the modules and supply runtime secrets:
 {
   imports = [
     nixelec.nixosModules.orangepizero3
-    nixelec.nixosModules.kodi-gbm
     nixelec.nixosModules.sd-image
   ];
-
-  nixelec.kiosk.enable = true;
-  nixelec.kiosk.cec.enable = true;
 
   # The PSK is read at boot and never stored in the Nix store.
   nixelec.wifi.enable = true;
@@ -72,10 +71,40 @@ For a custom configuration, import the modules and supply runtime secrets:
 }
 ```
 
+## Adding a player
+
+The card publishes facts; a kiosk consumes options. The two are joined by the
+consumer, never here:
+
+```nix
+{
+  imports = [
+    nixelec.nixosModules.orangepizero3   # this repository
+    nixelec-kiosk.nixosModules.kodi-gbm  # the player
+  ];
+
+  # Wiring: facts -> options. Only the consumer sees both layers.
+  nixelec.kiosk = {
+    enable = true;
+    package = kodi-kiosk; # required: the kiosk layer has no default
+    cec.driver = config.nixelec.platform.cecDriver;
+    cec.connector = "card0-${config.nixelec.platform.hdmiConnector}";
+    watchdog.enable = config.nixelec.platform.watchdog.enable;
+    extraKernelParams = [
+      "video=${config.nixelec.platform.hdmiConnector}:${config.nixelec.platform.videoMode}"
+    ];
+  };
+}
+```
+
+`nixelec.kiosk.package` has **no default on purpose**: a `pkgs.kodi-gbm` that
+lacks the `nix-v4l2-request` decoder makes Kodi fall back to CPU decoding
+silently. Use the kiosk build from `nix-v4l2-request`.
+
 ## Documentation
 
-- [`docs/configuration.md`](docs/configuration.md): module options, add-ons,
-  WiFi, CEC and runtime secret paths.
+- [`docs/configuration.md`](docs/configuration.md): module options, WiFi, board
+  facts and runtime secret paths.
 - [`docs/deployment.md`](docs/deployment.md): image build, flashing, first boot,
   remote access and updates.
 - [`docs/development.md`](docs/development.md): checks, formatting, CI, cache
@@ -85,17 +114,6 @@ For a custom configuration, import the modules and supply runtime secrets:
 - [`docs/verified.md`](docs/verified.md): built/evaluated vs measured on the
   board.
 - [`docs/backlog.md`](docs/backlog.md): public issues and decisions.
-
-## Examples
-
-- `examples/zero3-kodi.nix`: base appliance. Enables UI-sound muting, hides
-  unused Estuary menus and turns on the safe CEC defaults.
-- `examples/zero3-kodi-addons.nix`: installs and enables public nixpkgs add-ons
-  (`inputstream.*`, `pvr.iptvsimple`).
-- `examples/zero3-kodi-builtin.nix`: PPU built-in variant; requires a kernel
-  build and a cache refill.
-- `examples/zero3-kodi-cache.nix`: WiFi driver and firmware installed without
-  joining a network; used by the cache job.
 
 ## Remote access
 
@@ -175,6 +193,10 @@ nix build .#checks.x86_64-linux.prcm-ppu-loading
 | HDMI audio | validated on the reference board on 2026-10-24 with this kernel/DTB |
 | Cold-boot WiFi | validated with `nixelec.wifi` on 2026-10-25 |
 | CEC cold boot / TV standby | validated on the reference board on 2026-10-25 |
+
+The player rows (decode, audio, CEC) were measured with the kiosk module that
+now lives in `nixelec-kiosk`; the kernel, DTB, audio and WiFi results are
+properties of this layer and stay valid.
 
 See [`docs/verified.md`](docs/verified.md) for commands and details. Evaluation
 is not a hardware proof.

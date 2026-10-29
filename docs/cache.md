@@ -81,7 +81,7 @@ nixConfig = {
 
 ## What the cache job covers
 
-The `cache` job builds `orangepizero3-kodi-cache`, which has
+The `cache` job builds `orangepizero3-cache`, which has
 `nixelec.wifi.enable = true` (driver and firmware installed, no SSID/PSK). It
 pushes:
 
@@ -105,9 +105,11 @@ In the consumer, compare the shared derivations:
 ```bash
 nix eval --raw .#nixosConfigurations.<host>.config.boot.kernelPackages.kernel.drvPath
 nix eval --raw .#nixosConfigurations.<host>.config.hardware.nixbian.uBoot.package.outPath
-nix eval --impure --raw --expr \
-  '(builtins.getFlake "/path/to/nixelec-sunxi64").inputs.v4l2request.packages.aarch64-linux.kodi-kiosk.drvPath'
 ```
+
+This layer no longer pins `nix-v4l2-request`: the Kodi build belongs to whichever
+layer imports the kiosk (`nixelec-kiosk`), so compare its `kodi-kiosk`
+`drvPath` from the consumer, not from here.
 
 They must match the values in the main README. A dry-run of the consumer
 toplevel should then report few paths to build:

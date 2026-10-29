@@ -1,58 +1,26 @@
 # Configuration
 
 The public modules expose ordinary NixOS options under `nixelec.*`. Import the
-board, the Kodi profile and the image module, then set the options you need.
+board and the image module, then set the options you need.
 
 ```nix
 {
   imports = [
     nixelec.nixosModules.orangepizero3
-    nixelec.nixosModules.kodi-gbm
     nixelec.nixosModules.sd-image
   ];
-
-  nixelec.kiosk.enable = true;
 }
 ```
 
-Start from [`examples/zero3-kodi.nix`](../examples/zero3-kodi.nix) for a base
-appliance, or from
-[`examples/zero3-kodi-addons.nix`](../examples/zero3-kodi-addons.nix) when you
-also want the public add-ons.
-
-## Kodi
-
-The kiosk module lives in the neutral layer
-[`nixelec-kiosk`](https://github.com/zibaone/nixelec-kiosk); this repository
-re-exports it as `nixosModules.kodi-gbm` and wires the board facts
-(`nixelec.platform.*`) into the kiosk options. Option names below are the
-neutral layer's.
-
-| Option | Default | Purpose |
-|---|---|---|
-| `nixelec.kiosk.enable` | `false` | Enable the Kodi GBM kiosk (no compositor). |
-| `nixelec.kiosk.package` | board's `nixelec.platform.kodiPackage` | Kodi package to launch. No default in the neutral layer: the `kodi-gbm` module supplies the v4l2-request kiosk build. |
-| `nixelec.kiosk.user` | `kodi` | User that runs Kodi. |
-| `nixelec.kiosk.home` | `/var/lib/kodi` | Kodi home directory. |
-| `nixelec.kiosk.extraGroups` | video, audio, input, render, tty | Extra groups for the Kodi user. |
-| `nixelec.kiosk.extraKernelParams` | `[]` | Extra kernel parameters, for example `video=HDMI-A-1:1920x1080@60`. Only defined when non-empty. |
-| `nixelec.kiosk.uiSounds` | `false` | Disable Kodi UI sounds (`guisoundmode=0`, empty sound skin). |
-| `nixelec.kiosk.homeMenu.hidden` | `[]` | Estuary home-menu entries to hide. |
-| `nixelec.kiosk.addons` | `null` | Function that adds packages to the Kodi package set. |
-| `nixelec.kiosk.autoEnableAddons` | `[]` | Add-on IDs enabled at boot through JSON-RPC. |
-| `nixelec.kiosk.webServer.enable` | `false` | Kodi web server, HTTP Basic. |
-| `nixelec.kiosk.webServer.passwordFile` | `null` | Runtime file containing the web-server password. |
-| `nixelec.kiosk.webServer.username` | `kodi` | Web-server username. |
-| `nixelec.kiosk.webServer.port` | `8080` | Web-server port. |
-| `nixelec.kiosk.cec.enable` | `false` | HDMI-CEC helper services. |
-| `nixelec.kiosk.cec.driver` | board's `nixelec.platform.cecDriver` | Kernel CEC module; `null` keeps the kernel CEC units off (USB libCEC adapters still work). |
-| `nixelec.kiosk.cec.connector` | `card0-` + board's `hdmiConnector` | DRM connector watched before a hotplug restart. |
-| `nixelec.kiosk.watchdog.enable` | board's `nixelec.platform.watchdog.enable` | systemd hardware watchdog (`sunxi-wdt`, 16 s cap published as `maxTimeout`). |
+Start from [`examples/zero3-base.nix`](../examples/zero3-base.nix) for a bare
+board, or from [`examples/zero3-cache.nix`](../examples/zero3-cache.nix) when you
+also want the WiFi driver and firmware.
 
 ## Board facts
 
-The board layer publishes `nixelec.platform.*`; it never sets
-`nixelec.kiosk.*`. On H616/H618:
+This layer publishes `nixelec.platform.*`; it never sets `nixelec.kiosk.*`. The
+facts are inert unless the kiosk contract is imported, so a bare image gets no
+phantom options. On H616/H618:
 
 | Fact | Value |
 |---|---|
@@ -60,74 +28,41 @@ The board layer publishes `nixelec.platform.*`; it never sets
 | `hdmiConnector` | `"HDMI-A-1"` |
 | `videoMode` | `"1920x1080@60"` (preference, never forced with `D`) |
 | `watchdog.enable` / `watchdog.maxTimeout` | `true` / `16` (sunxi-wdt `max_timeout`, measured) |
-| `kodiPackage` | the `nix-v4l2-request` kiosk build (set by `nixosModules.kodi-gbm`) |
 
-### Add-ons
+## Adding a player
 
-`nixelec.kiosk.addons` receives the Kodi package set. nixpkgs uses hyphens in
-attribute names, while Kodi uses dots in add-on IDs:
+The kiosk lives in the neutral layer
+[`nixelec-kiosk`](https://github.com/zibaone/nixelec-kiosk). Import it next to
+this layer and do the wiring in your own profile — this repository deliberately
+does not ship it:
 
 ```nix
-nixelec.kiosk.addons =
-  kodi:
-  with kodi;
-  [
-    inputstream-adaptive
-    inputstream-ffmpegdirect
-    inputstream-rtmp
-    pvr-iptvsimple
+{
+  imports = [
+    nixelec.nixosModules.orangepizero3
+    nixelec.nixosModules.sd-image
+    nixelec-kiosk.nixosModules.kodi-gbm
   ];
 
-nixelec.kiosk.autoEnableAddons = [
-  "inputstream.adaptive"
-  "inputstream.ffmpegdirect"
-  "inputstream.rtmp"
-  "pvr.iptvsimple"
-];
+  nixelec.kiosk = {
+    enable = true;
+    package = kodi-kiosk; # required; no default in the neutral layer
+    cec.driver = config.nixelec.platform.cecDriver;
+    cec.connector = "card0-${config.nixelec.platform.hdmiConnector}";
+    watchdog.enable = config.nixelec.platform.watchdog.enable;
+    extraKernelParams = [
+      "video=${config.nixelec.platform.hdmiConnector}:${config.nixelec.platform.videoMode}"
+    ];
+  };
+}
 ```
 
-Kodi leaves add-ons installed by Nix disabled until an install event occurs. The
-`autoEnableAddons` oneshot calls `Addons.SetAddonEnabled` over the local JSON-RPC
-socket after Kodi starts. It stays independent from the Kodi restart cycle so a
-`nixos-rebuild switch` cannot leave Kodi stopped.
+The option reference (CEC, add-ons, web server, home menu) is in
+[`nixelec-kiosk/docs/contrat.md`](https://github.com/zibaone/nixelec-kiosk/blob/main/docs/contrat.md).
 
-### Web server
-
-Enable the web server only when the password file exists at boot:
-
-```nix
-nixelec.kiosk.webServer = {
-  enable = true;
-  passwordFile = "/run/secrets/kodi-web";
-};
-```
-
-The file is read by a root oneshot and is never copied into the Nix store. If the
-file is missing or empty, `kodi-settings` fails before Kodi starts; this is
-intentional.
-
-### CEC
-
-```nix
-nixelec.kiosk.cec = {
-  enable = true;
-  standbyPcOnTvStandby = "ignore";
-  reprobeOnBoot = true;
-  hotplugRecovery = false;
-};
-```
-
-| Option | Default | Purpose |
-|---|---|---|
-| `device` | `/dev/cec0` | CEC device used by the helpers. |
-| `connector` | `card0-HDMI-A-1` | DRM connector checked before a recovery restart. |
-| `standbyPcOnTvStandby` | `ignore` | Keep the appliance on, or follow the TV (`default`). |
-| `manageAdapterSettings` | `true` | Create or update the Kodi CEC adapter file before start. |
-| `reprobeOnBoot` | `true` | Reload `dw-hdmi-cec` when the physical address is invalid. |
-| `hotplugRecovery` | `false` | Restart Kodi after a hotplug when the address is invalid. |
-
-`hotplugRecovery` is a workaround, not a kernel fix. It is opt-in because it
-restarts Kodi.
+`nixelec.kiosk.package` has no default on purpose. A `pkgs.kodi-gbm` built
+without the `nix-v4l2-request` decoder makes `CDVDVideoCodecDRMPRIME::Create()`
+return nullptr, and Kodi silently decodes in software.
 
 ## WiFi
 
@@ -151,6 +86,9 @@ nixelec.wifi = {
 
 `iwd` must not be used with this driver: it deletes the interface at startup and
 deadlocks cfg80211. The module enforces `wpa_supplicant`.
+
+The WiFi module is not imported by `nixosModules.orangepizero3`; import
+`nixosModules.wifi-uwe5622` explicitly (the cache example does).
 
 ## Image and board
 
