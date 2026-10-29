@@ -195,6 +195,12 @@ in
         cecDriver = lib.mkDefault "dw-hdmi-cec";
         hdmiConnector = lib.mkDefault "HDMI-A-1";
         videoMode = lib.mkDefault "1920x1080@60";
+        # Le codec HDMI du H616 n'expose aucun contrôle de mixer : ACP ne
+        # construit pas de profil, donc PipeWire ne publie aucun sink HDMI et
+        # Kodi retombe sur la sortie analogique (TV muette). Le PCM brut, lui,
+        # fonctionne : `ffmpeg -f alsa hw:1,0` en stéréo 48 kHz sort sans
+        # erreur, sans ASoC dans dmesg.
+        hdmiPcm = lib.mkDefault "hw:1,0";
         watchdog = {
           enable = lib.mkDefault true;
           maxTimeout = lib.mkDefault 16;
