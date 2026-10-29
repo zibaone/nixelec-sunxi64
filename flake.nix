@@ -2,7 +2,7 @@
   description = "nixelec-sunxi64 — reusable NixOS appliance for Allwinner H616/H618 (Orange Pi Zero 3)";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
+    nixpkgs.url = "github:NixOS/nixpkgs/cd4ea8d57de16f4810bc5f14207bac45fbf19f67";
 
     flake-parts.url = "github:hercules-ci/flake-parts";
 
