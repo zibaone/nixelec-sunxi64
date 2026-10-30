@@ -195,6 +195,8 @@ in
         cecDriver = lib.mkDefault "dw-hdmi-cec";
         hdmiConnector = lib.mkDefault "HDMI-A-1";
         videoMode = lib.mkDefault "1920x1080@60";
+        # Console série des sunxi : UART 8250 classique.
+        consoleTty = lib.mkDefault "ttyS0";
         # Le codec HDMI du H616 n'expose aucun contrôle de mixer : ACP ne
         # construit pas de profil, donc PipeWire ne publie aucun sink HDMI et
         # Kodi retombe sur la sortie analogique (TV muette). Le PCM brut, lui,
