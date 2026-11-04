@@ -2,6 +2,7 @@
   config,
   lib,
   modulesPath,
+  pkgs,
   ...
 }:
 
@@ -47,4 +48,18 @@
       fi
     '';
   };
+
+  # nixpkgs déduit le numéro de partition de `lsblk -o MAJ:MIN`, ce qui ne vaut
+  # que quand la racine est sur le premier disque mmc (mmcblk0pN → mineur N).
+  # Dès qu'elle est sur mmcblk1p2 ou mmcblk2p2, le mineur ne correspond plus au
+  # numéro et `sfdisk -N` échoue : la partition n'est jamais agrandie. On lit le
+  # numéro dans sysfs, qui est toujours exact.
+  systemd.services.expand-root-partition.script = lib.mkForce ''
+    rootPart=$(${lib.getExe' pkgs.util-linux "findmnt"} -n -o SOURCE /)
+    bootDevice=$(${lib.getExe' pkgs.util-linux "lsblk"} -npo PKNAME "$rootPart")
+    partNum=$(${lib.getExe' pkgs.coreutils "cat"} "/sys/class/block/${"$"}{rootPart##*/}/partition")
+    echo ",+," | ${lib.getExe' pkgs.util-linux "sfdisk"} -N"$partNum" --no-reread "$bootDevice"
+    ${lib.getExe' pkgs.parted "partprobe"}
+    ${lib.getExe' pkgs.e2fsprogs "resize2fs"} "$rootPart"
+  '';
 }
