@@ -22,6 +22,13 @@
 
   hardware.enableRedistributableFirmware = lib.mkForce false;
 
+  # Bring-up : accès root sans mot de passe au shell d'urgence de l'initrd.
+  # Sans lui, un échec de montage de la racine laisse la box muette (« Cannot
+  # open access to console, the root account is locked ») : c'est le seul moyen
+  # d'inspecter un slot SD qui ne s'initialise pas. À retirer dès que la carte
+  # démarre.
+  boot.initrd.systemd.emergencyAccess = lib.mkDefault true;
+
   nix.settings.experimental-features = [
     "nix-command"
     "flakes"
