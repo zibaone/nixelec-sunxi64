@@ -52,13 +52,10 @@
       cp ${./transpeed-firmware/brcmfmac4334-sdio.txt} \
          $out/lib/firmware/brcm/brcmfmac4334-sdio.txt
     '')
-    # Ce noyau n'a pas CONFIG_FW_LOADER_COMPRESS (vérifié dans
-    # metadata/nix/families/sunxi64/configs/linux-sunxi64-edge.config) : un
-    # firmware livré en `.zst` n'est jamais chargé. NixOS compresse les paquets
-    # de firmware par défaut, d'où « Direct firmware load for regulatory.db
-    # failed with error -2 » à chaque boot. Même correctif que
-    # `modules/services/wifi-uwe5622.nix` sur la Zero 3.
-    (pkgs.wireless-regdb.overrideAttrs (_: { compressFirmware = false; }))
+    # `hardware.firmwareCompression = "none"` est posé par la famille sunxi64
+    # (ce noyau n'a pas CONFIG_FW_LOADER_COMPRESS), donc regulatory.db arrive
+    # décompressé : pas d'override local nécessaire ici.
+    pkgs.wireless-regdb
   ];
   # La NVRAM vendor contient `macaddr=00:90:4c:c5:12:38` (une adresse Broadcom
   # de remplissage), mais le firmware utilise en réalité la MAC gravée dans

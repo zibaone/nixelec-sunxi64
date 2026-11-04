@@ -162,6 +162,14 @@ in
       ];
 
       hardware.graphics.enable = lib.mkDefault true;
+      # Ce noyau n'a pas `CONFIG_FW_LOADER_COMPRESS` (vérifié dans
+      # metadata/nix/families/sunxi64/configs/linux-sunxi64-edge.config), alors
+      # que NixOS compresse les firmwares en zstd **d'après la version du
+      # noyau** (dès 5.19), sans consulter sa configuration réelle. Résultat :
+      # tout firmware livré par `hardware.firmware` l'est en `.zst` et n'est
+      # jamais chargé — « Direct firmware load for regulatory.db failed with
+      # error -2 » à chaque boot, et brcmfmac qui ne trouve pas son `.bin`.
+      hardware.firmwareCompression = lib.mkDefault "none";
 
       # A single extlinux entry on an appliance: no boot menu.
       boot.loader.generic-extlinux-compatible.configurationLimit = lib.mkDefault 0;
