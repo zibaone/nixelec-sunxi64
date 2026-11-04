@@ -143,6 +143,11 @@ in
         "dw-hdmi-i2s-audio"
         "snd-soc-hdmi-codec"
         "sun8i_ce"
+        # `CONFIG_ZRAM=m` : sans chargement explicite, /dev/zram0 n'existe pas
+        # au démarrage et l'unité de swap générée par zramSwap attend son
+        # périphérique pendant 90 s avant d'abandonner (délai observé sur la
+        # Transpeed). Charger le module crée zram0 immédiatement.
+        "zram"
       ];
 
       hardware.graphics.enable = lib.mkDefault true;
