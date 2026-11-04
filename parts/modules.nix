@@ -84,7 +84,12 @@ in
         });
       };
 
+    # Driver-agnostic WPA client: wpa_supplicant + PSK rendered from a secret
+    # file at boot. No driver, no firmware, no PSK in the store.
+    wifi-client = ../modules/services/wifi-client.nix;
+
     # UWE5622 WiFi: driver, firmware, wpa_supplicant. Disabled by default.
+    # Imports `wifi-client` for the supplicant part.
     wifi-uwe5622 = ../modules/services/wifi-uwe5622.nix;
 
     # Allwinner SD image: U-Boot at offset 8 KiB, extlinux, DTB.

@@ -41,13 +41,24 @@
   # dont l'absence est signalée à chaque boot par cfg80211.
   hardware.enableRedistributableFirmware = lib.mkForce false;
 
-  # WiFi associé à la main pour l'instant : `wpa_supplicant` + `wpa_cli` +
-  # DHCP via le mécanisme standard. Aucun SSID ni PSK ici — ce dépôt est
-  # public. L'association se fait au runtime (`wpa_cli`), en attendant le
-  # portage du mécanisme `pskFile` de `nixelec.wifi` / des secrets HavenOS.
-  networking.wireless = {
+  # WiFi : le PSK n'est jamais dans ce dépôt. Il est rendu au boot depuis un
+  # fichier fourni par la couche de secrets — côté HavenOS, ragenix le dépose
+  # dans /run/havenos/wifi-psk (même contrat que le kiosque Zero 3). Tant que
+  # `ssid`/`pskFile` sont nuls, aucun supplicant ne démarre : l'image de
+  # bring-up reste utilisable sans identifiants.
+  nixelec.wifiClient = {
     enable = true;
-    interfaces = [ "wld1" ];
+    interface = "wlan0";
+    ssid = null;
+    pskFile = null;
+  };
+
+  # Nom d'interface stable : brcmfmac est sur SDIO, donc systemd ne peut pas
+  # dériver un nom du bus et l'appelle `wld1`. On le fige sur `wlan0`, la
+  # convention des autres cartes de la flotte.
+  systemd.network.links."10-brcmfmac-wlan0" = {
+    matchConfig.Driver = "brcmfmac";
+    linkConfig.Name = "wlan0";
   };
 
   hardware.firmware = [

@@ -31,6 +31,7 @@
     modules = [
       self.nixosModules.transpeed-8k618-t
       self.nixosModules.sd-image
+      self.nixosModules.wifi-client
       ../examples/transpeed-base.nix
     ];
   };

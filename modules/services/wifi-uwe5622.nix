@@ -15,6 +15,7 @@ let
   };
 in
 {
+  imports = [ ./wifi-client.nix ];
   options.nixelec.wifi = {
     enable = lib.mkEnableOption "Unisoc UWE5622 (AW859A) WiFi";
 
@@ -72,49 +73,13 @@ in
       }))
     ];
 
-    # iwd deletes an interface at startup (NL80211_CMD_DEL_INTERFACE);
-    # sprdwl_del_iface unregisters the netdevice synchronously and deadlocks
-    # cfg80211 under the wiphy mutex. wpa_supplicant neither creates nor
-    # destroys an interface: it is the only usable supplicant with this driver.
-    networking.wireless.iwd.enable = lib.mkForce false;
-
-    systemd.services.wpa-psk = lib.mkIf (cfg.ssid != null && cfg.pskFile != null) {
-      description = "Render /run/wpa_supplicant.conf from a secret file";
-      wantedBy = [ "wpa-supplicant-${cfg.interface}.service" ];
-      before = [ "wpa-supplicant-${cfg.interface}.service" ];
-      serviceConfig = {
-        Type = "oneshot";
-        RemainAfterExit = true;
-      };
-      script = ''
-        umask 077
-        {
-          printf 'network={\n'
-          printf '\tssid="%s"\n' "${cfg.ssid}"
-          printf '\tpsk="%s"\n' "$(cat "${cfg.pskFile}")"
-          printf '}\n'
-        } > /run/wpa_supplicant.conf
-      '';
+    # Le PSK et wpa_supplicant sont fournis par le module client générique :
+    # même comportement qu'avant, mais réutilisable par une carte dont le pilote
+    # WiFi n'est pas l'UWE5622 (Broadcom SDIO de la Transpeed par exemple).
+    nixelec.wifiClient = lib.mkIf cfg.enable {
+      enable = true;
+      inherit (cfg) interface ssid pskFile;
     };
-
-    systemd.services."wpa-supplicant-${cfg.interface}" =
-      lib.mkIf (cfg.ssid != null && cfg.pskFile != null)
-        {
-          description = "wpa_supplicant (${cfg.interface})";
-          wantedBy = [ "multi-user.target" ];
-          after = [
-            "network-pre.target"
-            "wpa-psk.service"
-          ];
-          wants = [ "wpa-psk.service" ];
-          before = [ "network.target" ];
-          serviceConfig = {
-            Type = "simple";
-            ExecStart = "${pkgs.wpa_supplicant}/sbin/wpa_supplicant -c /run/wpa_supplicant.conf -i ${cfg.interface}";
-            Restart = "on-failure";
-            RestartSec = 5;
-          };
-        };
 
     systemd.services.wlan-ps-off = lib.mkIf cfg.powerSaveOff {
       description = "Disable WiFi firmware power saving (UWE5622)";
