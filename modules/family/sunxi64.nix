@@ -152,6 +152,13 @@ in
         # module n'est pas dans la fermeture si rien ne le référence : le
         # lister ici le garde et le charge au boot.
         "brcmfmac"
+        # brcmfmac est découpé : l'attache du firmware réclame au runtime
+        # `modprobe brcmfmac-wcc` (brcmf_fwvid_request_module), et l'élagage
+        # retire brcmfmac-wcc.ko si rien ne le cite. Sans lui :
+        #   brcmf_fwvid_request_module: mod=wcc: failed 256
+        #   brcmf_attach: brcmf_fwvid_attach failed
+        # alors que le firmware, lui, se charge correctement.
+        "brcmfmac-wcc"
       ];
 
       hardware.graphics.enable = lib.mkDefault true;
