@@ -29,6 +29,14 @@
   # démarre.
   boot.initrd.systemd.emergencyAccess = lib.mkDefault true;
 
+  # Le governor cpufreq `ondemand` fait crasher le noyau 7.0.14 sur cette box :
+  # od_dbs_update → dev_pm_opp_set_rate → clk_set_parent → clk_reparent, avec
+  # des LIST_POISON (dead000000000100) dans la liste des enfants de l'horloge
+  # CPU. Le reparentage laisse ensuite le cache de blocs incohérent (flood
+  # __find_get_block_slow) et le montage de la racine devient inutilisable.
+  # `performance` ne fait plus qu'un set_rate à l'init, comme au démarrage.
+  boot.kernelParams = [ "cpufreq.default_governor=performance" ];
+
   nix.settings.experimental-features = [
     "nix-command"
     "flakes"
