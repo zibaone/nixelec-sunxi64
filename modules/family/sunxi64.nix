@@ -148,6 +148,10 @@ in
         # périphérique pendant 90 s avant d'abandonner (délai observé sur la
         # Transpeed). Charger le module crée zram0 immédiatement.
         "zram"
+        # WiFi SDIO Broadcom (BCM4334 sur la Transpeed, 0x02d0:0x4334). Le
+        # module n'est pas dans la fermeture si rien ne le référence : le
+        # lister ici le garde et le charge au boot.
+        "brcmfmac"
       ];
 
       hardware.graphics.enable = lib.mkDefault true;

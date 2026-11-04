@@ -2,7 +2,7 @@
 #
 # Sert au bring-up (SD d'abord) : console ttyS0 à 115200, SSH avec la clé
 # ajoutée avant flash. La couche kiosque vit dans `nixelec-kiosk`.
-{ lib, ... }:
+{ lib, pkgs, ... }:
 
 {
   networking.hostName = lib.mkDefault "nixelec-transpeed";
@@ -20,7 +20,26 @@
   # passe connu doit disparaître de toute image déployée.
   users.users.root.initialPassword = lib.mkDefault "nixos";
 
-  hardware.enableRedistributableFirmware = lib.mkForce false;
+  # WiFi BCM4334 (SDIO 0x02d0:0x4334, « AP6334 »). Trois pièces sont
+  # nécessaires et une seule vient de linux-firmware :
+  #   - `brcm/brcmfmac43340-sdio.bin` : fourni par linux-firmware, donc il faut
+  #     autoriser les firmwares redistribuables (le `mkForce false` ci-dessus) ;
+  #   - `brcm/brcmfmac43340-sdio.txt` : la NVRAM, propre à la carte, absente de
+  #     linux-firmware. Elle vient de la partition `vendor` du dump Android
+  #     (`nvram_ap6334.txt`, manfid 0x02d0 / boardtype 0x05c1 / boardnum 22),
+  #     renommée au nom que brcmfmac dérive du chip ;
+  #   - le module `brcmfmac`, chargé explicitement (voir `sunxi64.nix`).
+  # La NVRAM fixe `macaddr=00:90:4c:c5:12:38` : plusieurs box partageraient la
+  # même MAC, à remplacer par une adresse par appareil avant tout déploiement.
+  hardware.enableRedistributableFirmware = lib.mkForce true;
+
+  hardware.firmware = [
+    (pkgs.runCommand "brcmfmac43340-nvram" { } ''
+      mkdir -p $out/lib/firmware/brcm
+      cp ${./transpeed-firmware/brcmfmac43340-sdio.txt} \
+         $out/lib/firmware/brcm/brcmfmac43340-sdio.txt
+    '')
+  ];
 
   # Bring-up : accès root sans mot de passe au shell d'urgence de l'initrd.
   # Sans lui, un échec de montage de la racine laisse la box muette (« Cannot
