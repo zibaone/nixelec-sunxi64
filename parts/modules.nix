@@ -64,6 +64,26 @@ in
         });
       };
 
+    # Board: Transpeed 8K618-T (H618 TV box, board entry local to nixbian).
+    transpeed-8k618-t =
+      {
+        config,
+        lib,
+        pkgs,
+        ...
+      }:
+      {
+        imports = [
+          inputs.nixbian.nixosModules.nixbian
+          ../modules/family/sunxi64.nix
+          ../modules/boards/transpeed-8k618-t.nix
+        ];
+
+        nixelec.kernelPackage = lib.mkDefault (familyKernel {
+          inherit config pkgs;
+        });
+      };
+
     # UWE5622 WiFi: driver, firmware, wpa_supplicant. Disabled by default.
     wifi-uwe5622 = ../modules/services/wifi-uwe5622.nix;
 

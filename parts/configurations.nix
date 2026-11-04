@@ -24,8 +24,22 @@
     ];
   };
 
+  # Transpeed 8K618-T (box H618) : même socle, board fournie par nixbian
+  # (`local_boards`) faute d'entrée Armbian. Référence pour le bring-up SD.
+  flake.nixosConfigurations.transpeed-8k618-t = inputs.nixpkgs.lib.nixosSystem {
+    system = "aarch64-linux";
+    modules = [
+      self.nixosModules.transpeed-8k618-t
+      self.nixosModules.sd-image
+      ../examples/transpeed-base.nix
+    ];
+  };
+
   flake.packages.aarch64-linux.orangepizero3-sd-image =
     self.nixosConfigurations.orangepizero3.config.system.build.sdImage;
+
+  flake.packages.aarch64-linux.transpeed-8k618-t-sd-image =
+    self.nixosConfigurations.transpeed-8k618-t.config.system.build.sdImage;
 
   # SPI fallback bootloader: U-Boot alone, written at SPI offset 0 (not 8 KiB,
   # which is the SD offset). The SPL header is eGON.BT0 and the U-Boot FIT
