@@ -41,6 +41,15 @@
   # dont l'absence est signalée à chaque boot par cfg80211.
   hardware.enableRedistributableFirmware = lib.mkForce false;
 
+  # WiFi associé à la main pour l'instant : `wpa_supplicant` + `wpa_cli` +
+  # DHCP via le mécanisme standard. Aucun SSID ni PSK ici — ce dépôt est
+  # public. L'association se fait au runtime (`wpa_cli`), en attendant le
+  # portage du mécanisme `pskFile` de `nixelec.wifi` / des secrets HavenOS.
+  networking.wireless = {
+    enable = true;
+    interfaces = [ "wld1" ];
+  };
+
   hardware.firmware = [
     (pkgs.runCommand "brcmfmac4334-firmware" { } ''
       mkdir -p $out/lib/firmware/brcm
