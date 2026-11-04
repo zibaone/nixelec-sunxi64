@@ -20,14 +20,20 @@
   # passe connu doit disparaître de toute image déployée.
   users.users.root.initialPassword = lib.mkDefault "nixos";
 
-  # WiFi BCM4334 (SDIO 0x02d0:0x4334, « AP6334 »). Trois pièces sont
-  # nécessaires :
-  #   - `brcm/brcmfmac43340-sdio.bin` : fourni par linux-firmware ;
-  #   - `brcm/brcmfmac43340-sdio.txt` : la NVRAM, propre à la carte, absente de
+  # WiFi BCM4334 (SDIO 0x02d0:0x4334). Le driver rapporte « BCM4334/3 » et
+  # demande donc `brcm/brcmfmac4334-sdio`, pas `43340` : dans linux-firmware,
+  # `brcmfmac43340-sdio.bin` est un lien vers le firmware **Cypress** tandis que
+  # `brcmfmac4334-sdio.bin` est le binaire Broadcom (301 941 o) qui correspond à
+  # ce chip. Trois pièces sont nécessaires :
+  #   - `brcm/brcmfmac4334-sdio.bin` : fourni par linux-firmware ;
+  #   - `brcm/brcmfmac4334-sdio.txt` : la NVRAM, propre à la carte, absente de
   #     linux-firmware. Elle vient de la partition `vendor` du dump Android
-  #     (`nvram_ap6334.txt`, manfid 0x02d0 / boardtype 0x05c1 / boardnum 22),
-  #     renommée au nom que brcmfmac dérive du chip ;
+  #     (`nvram_ap6334.txt`, manfid 0x02d0 / boardtype 0x05c1 / boardnum 22) ;
   #   - `brcmfmac` chargé au boot (voir `sunxi64.nix`).
+  #
+  # brcmfmac tente d'abord un nom spécifique à la carte, dérivé du `compatible`
+  # (`brcmfmac4334-sdio.transpeed,8k618-t.bin`), puis retombe sur le nom
+  # générique : inutile de dupliquer les fichiers.
   #
   # On n'active volontairement PAS `enableRedistributableFirmware` : il embarque
   # les 826 Mo de linux-firmware et fait passer l'image de 590 Mo à 1,5 Go. On
@@ -36,15 +42,15 @@
   hardware.enableRedistributableFirmware = lib.mkForce false;
 
   hardware.firmware = [
-    (pkgs.runCommand "brcmfmac43340-firmware" { } ''
+    (pkgs.runCommand "brcmfmac4334-firmware" { } ''
       mkdir -p $out/lib/firmware/brcm
       # Le paquet peut exposer `...-sdio.bin` ou `...-sdio.bin.zst` selon la
       # variante de linux-firmware (compressée ou non) ; le kernel gère les deux.
-      for f in ${pkgs.linux-firmware}/lib/firmware/brcm/brcmfmac43340-sdio.bin*; do
-        cp "$f" $out/lib/firmware/brcm/
+      for f in ${pkgs.linux-firmware}/lib/firmware/brcm/brcmfmac4334-sdio.bin*; do
+        cp -L "$f" $out/lib/firmware/brcm/
       done
-      cp ${./transpeed-firmware/brcmfmac43340-sdio.txt} \
-         $out/lib/firmware/brcm/brcmfmac43340-sdio.txt
+      cp ${./transpeed-firmware/brcmfmac4334-sdio.txt} \
+         $out/lib/firmware/brcm/brcmfmac4334-sdio.txt
     '')
     pkgs.wireless-regdb
   ];
