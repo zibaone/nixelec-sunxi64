@@ -130,9 +130,19 @@ in
       # software and have no OF `compatible`. DTB-based pruning removes them.
       # `boot.kernelModules` puts them back into the module tree allowlist and
       # loads them at boot.
+      #
+      # `sun8i_ce` : le moteur crypto H616 (`crypto@1904000`, compatible
+      # `allwinner,sun50i-h616-crypto`, sans propriété `status` donc actif) est
+      # déjà construit dans la config de famille (`CONFIG_CRYPTO_DEV_SUN8I_CE=m`
+      # + HASH/PRNG/TRNG). Il est listé ici pour deux raisons : `boot.kernelModules`
+      # alimente `kernelModules.extraKeep`, donc le module survit au pruning DTB,
+      # et le chargement ne dépend pas du modalias OF. Il n'accélère PAS LUKS2 :
+      # le CE n'expose que cbc/ecb/cts (pas XTS), donc `aes-xts-plain64` reste en
+      # logiciel. Le gain réel est sur SHA/PRNG et sur les modes CBC.
       boot.kernelModules = [
         "dw-hdmi-i2s-audio"
         "snd-soc-hdmi-codec"
+        "sun8i_ce"
       ];
 
       hardware.graphics.enable = lib.mkDefault true;
