@@ -13,6 +13,14 @@
   sdImage = {
     compressImage = lib.mkDefault true;
 
+    # nixbian ajoute `root=LABEL=nixos` à la ligne de commande, alors que
+    # nixpkgs' sd-image étiquette la partition racine `NIXOS_SD`
+    # (`sdImage.rootVolumeLabel` par défaut). Une seule étiquette : sans ça, le
+    # `root=` du noyau et le système de fichiers réel se contredisent — sans
+    # effet avec l'initrd systemd (qui monte depuis la fstab), mais fatal avec
+    # l'initrd classique.
+    rootVolumeLabel = lib.mkDefault "nixos";
+
     # Nothing in the firmware partition: U-Boot is written raw at offset 8 KiB
     # and the DTB goes to /boot through extlinux.
     populateFirmwareCommands = "";
