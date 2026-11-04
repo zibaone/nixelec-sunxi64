@@ -38,8 +38,11 @@
   hardware.firmware = [
     (pkgs.runCommand "brcmfmac43340-firmware" { } ''
       mkdir -p $out/lib/firmware/brcm
-      cp ${pkgs.linux-firmware}/lib/firmware/brcm/brcmfmac43340-sdio.bin.zst \
-         $out/lib/firmware/brcm/
+      # Le paquet peut exposer `...-sdio.bin` ou `...-sdio.bin.zst` selon la
+      # variante de linux-firmware (compressée ou non) ; le kernel gère les deux.
+      for f in ${pkgs.linux-firmware}/lib/firmware/brcm/brcmfmac43340-sdio.bin*; do
+        cp "$f" $out/lib/firmware/brcm/
+      done
       cp ${./transpeed-firmware/brcmfmac43340-sdio.txt} \
          $out/lib/firmware/brcm/brcmfmac43340-sdio.txt
     '')
