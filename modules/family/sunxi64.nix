@@ -20,6 +20,22 @@ in
     '';
   };
 
+  options.nixelec.wifiHardware = lib.mkOption {
+    type = lib.types.enum [
+      "none"
+      "uwe5622"
+      "brcmfmac"
+    ];
+    default = "none";
+    description = ''
+      WiFi chip physically present on the board. Set by the board module so
+      that driver-specific modules can stay inert on boards they do not serve:
+      `nixelec.wifi` (UWE5622) is imported for the whole sunxi64 layer, and
+      without this marker it would build and load its out-of-tree driver on a
+      board that carries a Broadcom SDIO chip instead.
+    '';
+  };
+
   options.nixelec.prcmPpu = {
     mode = lib.mkOption {
       type = lib.types.enum [
@@ -139,27 +155,30 @@ in
       # et le chargement ne dépend pas du modalias OF. Il n'accélère PAS LUKS2 :
       # le CE n'expose que cbc/ecb/cts (pas XTS), donc `aes-xts-plain64` reste en
       # logiciel. Le gain réel est sur SHA/PRNG et sur les modes CBC.
-      boot.kernelModules = [
-        "dw-hdmi-i2s-audio"
-        "snd-soc-hdmi-codec"
-        "sun8i_ce"
-        # `CONFIG_ZRAM=m` : sans chargement explicite, /dev/zram0 n'existe pas
-        # au démarrage et l'unité de swap générée par zramSwap attend son
-        # périphérique pendant 90 s avant d'abandonner (délai observé sur la
-        # Transpeed). Charger le module crée zram0 immédiatement.
-        "zram"
-        # WiFi SDIO Broadcom (BCM4334 sur la Transpeed, 0x02d0:0x4334). Le
-        # module n'est pas dans la fermeture si rien ne le référence : le
-        # lister ici le garde et le charge au boot.
-        "brcmfmac"
-        # brcmfmac est découpé : l'attache du firmware réclame au runtime
-        # `modprobe brcmfmac-wcc` (brcmf_fwvid_request_module), et l'élagage
-        # retire brcmfmac-wcc.ko si rien ne le cite. Sans lui :
-        #   brcmf_fwvid_request_module: mod=wcc: failed 256
+      boot.kernelModules =
+        [
+          "dw-hdmi-i2s-audio"
+          "snd-soc-hdmi-codec"
+          "sun8i_ce"
+          # `CONFIG_ZRAM=m` : sans chargement explicite, /dev/zram0 n'existe pas
+          # au démarrage et l'unité de swap générée par zramSwap attend son
+          # périphérique pendant 90 s avant d'abandonner (délai observé sur la
+          # Transpeed). Charger le module crée zram0 immédiatement.
+          "zram"
+        ]
+        # WiFi SDIO Broadcom, uniquement sur une carte qui en porte un
+        # (marqueur posé par le module de carte). Le module n'est pas dans la
+        # fermeture si rien ne le référence : le lister le garde et le charge.
+        # `brcmfmac` est découpé : l'attache du firmware réclame au runtime
+        # `modprobe brcmfmac-wcc` (brcm_fwvid_request_module), et l'élagage
+        # retire `brcmfmac-wcc.ko` si rien ne le cite — sans lui :
+        #   brcm_fwvid_request_module: mod=wcc: failed 256
         #   brcmf_attach: brcmf_fwvid_attach failed
         # alors que le firmware, lui, se charge correctement.
-        "brcmfmac-wcc"
-      ];
+        ++ lib.optionals (config.nixelec.wifiHardware == "brcmfmac") [
+          "brcmfmac"
+          "brcmfmac-wcc"
+        ];
 
       hardware.graphics.enable = lib.mkDefault true;
       # Ce noyau n'a pas `CONFIG_FW_LOADER_COMPRESS` (vérifié dans

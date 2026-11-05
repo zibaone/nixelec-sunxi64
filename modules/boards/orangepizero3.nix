@@ -51,6 +51,9 @@ in
       hardware.nixbian.board = lib.mkDefault "orangepizero3";
       hardware.nixbian.kernelVendor = lib.mkDefault "edge";
 
+      # Unisoc/UWE5622 (AW859A) sur SDIO : c'est ce que `nixelec.wifi` pilote.
+      nixelec.wifiHardware = lib.mkDefault "uwe5622";
+
       # The VPU and display need a large enough contiguous allocation. Measured
       # on the board: CmaFree dropped to 2 MB of 128 while Kodi played a film and
       # a 765-page allocation failed with -16. 256M is the working value.

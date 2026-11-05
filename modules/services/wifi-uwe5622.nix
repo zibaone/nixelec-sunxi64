@@ -47,7 +47,12 @@ in
     };
   };
 
-  config = lib.mkIf cfg.enable {
+  # Le pilote n'a de sens que sur une carte qui porte réellement l'UWE5622 :
+  # la couche sunxi64 importe ce module pour toutes ses cartes, et la Transpeed
+  # a un Broadcom SDIO. Le marqueur est posé par chaque module de carte.
+  # Défaut `uwe5622` quand `nixelec.wifiHardware` n'existe pas (module importé
+  # seul, sans la couche famille) : on conserve alors l'ancien comportement.
+  config = lib.mkIf (cfg.enable && (config.nixelec.wifiHardware or "uwe5622") == "uwe5622") {
     # The driver is out of tree. sunxi_addr provides the MAC address and is
     # pruned from the module tree. `boot.kernelModules` puts it back into the
     # allowlist.
