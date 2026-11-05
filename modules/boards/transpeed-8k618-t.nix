@@ -25,4 +25,17 @@
   # Le VE et l'affichage n'ont pas d'IOMMU : tout passe par CMA. 256M est la
   # valeur mesurée sur la Zero 3 ; la box a 4 Go, il n'y a pas à la réduire.
   boot.kernelParams = [ "cma=256M" ];
+
+  # Interface WiFi au nom stable.
+  #
+  # brcmfmac est un pilote **SDIO** : systemd ne peut pas dériver de nom de bus
+  # et renomme le `wlan0` du noyau en `wld1` ("wireless, no bus id"). Un
+  # supplicant configuré sur wlan0 échoue alors sur « Interface wlan0 does not
+  # exist » — invisible avec `loglevel=3`, et le symptôme se confond avec un
+  # problème de PSK. On fige le nom ici plutôt que chez chaque consommateur :
+  # la règle suit la carte, pas le profil.
+  systemd.network.links."10-brcmfmac-wlan0" = {
+    matchConfig.Driver = "brcmfmac";
+    linkConfig.Name = "wlan0";
+  };
 }

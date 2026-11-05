@@ -53,13 +53,9 @@
     pskFile = null;
   };
 
-  # Nom d'interface stable : brcmfmac est sur SDIO, donc systemd ne peut pas
-  # dériver un nom du bus et l'appelle `wld1`. On le fige sur `wlan0`, la
-  # convention des autres cartes de la flotte.
-  systemd.network.links."10-brcmfmac-wlan0" = {
-    matchConfig.Driver = "brcmfmac";
-    linkConfig.Name = "wlan0";
-  };
+  # Nom d'interface stable : la règle `.link` est posée par le module de carte
+  # (`modules/boards/transpeed-8k618-t.nix`), elle suit la carte et pas
+  # l'exemple — voir le commentaire là-bas.
 
   hardware.firmware = [
     (pkgs.runCommand "brcmfmac4334-firmware" { } ''
