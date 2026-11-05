@@ -24,7 +24,10 @@ permissions:
 
 # A push during an image build must not start a second one.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # `github.event_name` en plus : un push sur main ne doit pas annuler un build
+  # d'image lancé à la main (`workflow_dispatch`) — c'est arrivé, et il ne
+  # restait ni artefact ni entrée de cache du travail déjà compilé.
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
@@ -321,6 +324,9 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.build-image == 'true'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 300
+    env:
+      CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      CACHIX_SIGNING_KEY: ${{ secrets.CACHIX_SIGNING_KEY }}
     steps:
       - uses: actions/checkout@v7
 
@@ -342,6 +348,14 @@ jobs:
             max-jobs = 8
             cores = 0
 
+      - uses: cachix/cachix-action@v17
+        if: env.CACHIX_AUTH_TOKEN != '' && env.CACHIX_SIGNING_KEY != ''
+        with:
+          name: ${{ vars.CACHIX_CACHE || 'nixelec' }}
+          authToken: ${{ env.CACHIX_AUTH_TOKEN }}
+          signingKey: ${{ env.CACHIX_SIGNING_KEY }}
+          skipPush: true
+
       - name: Build the SD image
         run: |
           set -euo pipefail
@@ -351,6 +365,34 @@ jobs:
           fi
           nix build "${override[@]}" -L \
             .#nixosConfigurations.transpeed-8k618-t.config.system.build.sdImage
+
+      # Le noyau est la pièce chère (patches AC300 + variante EMAC1) : sans
+      # push, chaque rebuild local repasse par la compilation complète. On
+      # pousse le noyau, son `dev` (nécessaire pour recompiler un module
+      # isolé), le toplevel et l'image, puis on vérifie les narinfos — un
+      # « Pushed » sans narinfo 200 ne sert à rien au consommateur.
+      - name: Push kernel, kernel.dev, toplevel and image; verify narinfos
+        if: env.CACHIX_AUTH_TOKEN != '' && env.CACHIX_SIGNING_KEY != ''
+        env:
+          CACHE: ${{ vars.CACHIX_CACHE || 'nixelec' }}
+        run: |
+          set -euo pipefail
+          override=()
+          if [ -n "${{ github.event.inputs.nixpkgs-rev }}" ]; then
+            override=(--override-input nixpkgs "github:NixOS/nixpkgs/${{ github.event.inputs.nixpkgs-rev }}")
+          fi
+          cfg=".#nixosConfigurations.transpeed-8k618-t.config"
+          kernel=$(nix path-info "${override[@]}" "$cfg.boot.kernelPackages.kernel")
+          kernel_dev=$(nix path-info "${override[@]}" "$cfg.boot.kernelPackages.kernel.dev")
+          toplevel=$(nix path-info "${override[@]}" "$cfg.system.build.toplevel")
+          image=$(nix path-info "${override[@]}" "$cfg.system.build.sdImage")
+          cachix push "$CACHE" "$kernel" "$kernel_dev" "$toplevel" "$image"
+          for p in "$kernel" "$kernel_dev" "$toplevel" "$image"; do
+            h=$(basename "$p" | cut -c1-32)
+            code=$(curl -s -o /dev/null -w '%{http_code}' "https://${CACHE}.cachix.org/$h.narinfo")
+            echo "$code  $(basename "$p")"
+            test "$code" = "200"
+          done
 
       - name: Summary
         run: |
