@@ -235,29 +235,6 @@ in
       }
     )
 
-    # Ethernet H616/H618 : le RJ45 est sur EMAC1, relié au PHY AC200/AC300
-    # co-packagé (MDIO addr 0). Rien de tout cela n'est dans l'arbre amont
-    # 7.0.14 : on porte le driver PHY AC300 et on remet le nœud `emac1` dans
-    # sa forme mainline (le patch Armbian vendor le remplace par un
-    # `sunxi-gmac` que rien ne pilote). Mesures et contrat DT complets :
-    # skill `sunxi-h618-board-bringup`, section Ethernet.
-    #
-    # `CONFIG_AC300_PHY=y` : le driver PHY doit être enregistré avant le
-    # probe du MAC, sinon le PHY est pris par `genphy` et n'en décroche plus.
-    # `CONFIG_DWMAC_SUN8I=m` : un rebuild noyau aarch64 coûte ~45 min, alors
-    # qu'un module se recompile en ~2 min et se transfère par UART — c'est ce
-    # qui rend l'itération possible sur le link-up.
-    {
-      hardware.nixbian.extraPatches = [
-        ../../patches/kernel/0001-net-phy-add-ac300-ephy.patch
-        ../../patches/kernel/0002-arm64-dts-h616-emac1-ac300.patch
-      ];
-      hardware.nixbian.extraConfig = lib.mkAfter ''
-        CONFIG_AC300_PHY=y
-        CONFIG_DWMAC_SUN8I=m
-      '';
-    }
-
     # Faits H616/H618 pour la couche kiosque (`nixelec-kiosk`). Publiés
     # uniquement quand cette couche est importée : `nixelec.platform` n'existe
     # pas sur une image serveur, et un module ne doit pas créer d'option
