@@ -59,7 +59,6 @@
 
   # Firmware WiFi (4334 + NVRAM + wireless-regdb) : posé par le module de carte.
 
-
   # Bring-up : accès root sans mot de passe au shell d'urgence de l'initrd.
   # Sans lui, un échec de montage de la racine laisse la box muette (« Cannot
   # open access to console, the root account is locked ») : c'est le seul moyen
