@@ -1,0 +1,165 @@
+#!/usr/bin/env bash
+# bench — banc d'essai sunxi64 : inventaire de la carte, noyau de test sur p1,
+# retour au boot normal.
+#
+# Principe (voir HavenOS/docs/specs/banc-validation-plateforme.md) :
+#   - U-Boot balaie les partitions dans l'ordre et lit un extlinux.conf sur p1
+#     AVANT celui de p2. Un menu posé sur p1 prend donc la main ;
+#   - les chemins d'un extlinux.conf sont relatifs à la partition qui le porte :
+#     p1 doit contenir l'Image, le DTB et l'initrd (d'où p1 à 128 Mio) ;
+#   - sans extlinux.conf sur p1, le boot reste celui de p2 : le banc est inerte.
+set -euo pipefail
+
+P1_LABEL="${BENCH_P1_LABEL:-FIRMWARE}"
+MNT="${BENCH_MNT:-/run/bench/p1}"
+DEST="${MNT}/test"
+CONF="${MNT}/extlinux/extlinux.conf"
+
+usage() {
+    cat <<'EOF'
+bench — banc d'essai sunxi64
+
+  bench inventory [--json]              inventaire lecture seule de la carte
+  bench boot-test <Image> <dtb> <initrd> [--append "k=v …"]
+                                        dépose un noyau de test sur p1 et le
+                                        rend prioritaire au prochain démarrage
+  bench clear                           retire le menu de p1 (boot normal)
+  bench status                          ce que le prochain boot fera
+
+Variables : BENCH_P1_LABEL (défaut FIRMWARE), BENCH_MNT (défaut /run/bench/p1)
+EOF
+}
+
+die() { echo "bench: $*" >&2; exit 1; }
+
+mounted_here=0
+mount_p1() {
+    command -v blkid >/dev/null || die "blkid absent (système complet requis)"
+    mkdir -p "$MNT"
+    mountpoint -q "$MNT" && return 0
+    local dev
+    dev=$(blkid -L "$P1_LABEL" || true)
+    [ -n "$dev" ] || die "partition '$P1_LABEL' introuvable"
+    mount -o rw "$dev" "$MNT" || die "montage de $dev impossible"
+    mounted_here=1
+}
+
+umount_p1() {
+    [ "$mounted_here" = 1 ] && umount "$MNT" || true
+}
+trap umount_p1 EXIT
+
+running_append() {
+    # Réutilise la ligne APPEND du système courant : le noyau de test doit
+    # démarrer la MÊME racine, avec le même init= et le même root=.
+    local f=/boot/extlinux/extlinux.conf
+    [ -r "$f" ] || die "$f illisible : lancer bench depuis le système installé"
+    awk '/^[[:space:]]*APPEND[[:space:]]/ {sub(/^[[:space:]]*APPEND[[:space:]]+/, ""); print; exit}' "$f"
+}
+
+cmd_status() {
+    if [ -f "$CONF" ]; then
+        echo "banc ACTIF sur p1 : prochain boot = noyau de test"
+        echo "  menu : $CONF"
+        [ -f "$DEST/Image" ] && echo "  Image : $(stat -c%s "$DEST/Image") o"
+        [ -f "$DEST/initrd" ] && echo "  initrd: $(stat -c%s "$DEST/initrd") o"
+    else
+        echo "banc inactif : prochain boot = système de p2"
+    fi
+}
+
+cmd_inventory() {
+    local model kernel loader
+    if [ -r /proc/device-tree/model ]; then
+        model=$(tr -d '\0' < /proc/device-tree/model)
+    else
+        model=inconnu
+    fi
+    kernel=$(uname -r)
+    loader="absent"
+    local dev
+    dev=$(blkid -L "$P1_LABEL" 2>/dev/null || true)
+    if [ -n "$dev" ]; then
+        local sig
+        sig=$(od -An -tx1 -j 8196 -N 4 "$dev" 2>/dev/null | tr -s ' ' || true)
+        [ "$(echo "$sig" | tr -d ' ')" = "65474f4e" ] && loader="eGON (offset 8196)"
+    fi
+
+    if [ "${1:-}" = "--json" ]; then
+        printf '{"machine":"%s","kernel":"%s","loader":"%s","benchActive":%s,"disks":%s}\n' \
+            "${model//\"/\\\"}" "$kernel" "$loader" \
+            "$([ -f "$CONF" ] && echo true || echo false)" \
+            "$(lsblk --json -o NAME,SIZE,MODEL,LABEL,FSTYPE,TYPE 2>/dev/null || echo '{}')"
+    else
+        echo "machine : $model"
+        echo "noyau   : $kernel"
+        echo "chargeur: $loader"
+        echo "banc    : $([ -f "$CONF" ] && echo actif || echo inactif)"
+        echo
+        lsblk -o NAME,SIZE,MODEL,LABEL,FSTYPE,MOUNTPOINTS
+    fi
+}
+
+cmd_boot_test() {
+    [ $# -ge 3 ] || { usage; exit 1; }
+    local img=$1 dtb=$2 initrd=$3
+    shift 3
+    local extra=""
+    while [ $# -gt 0 ]; do
+        case $1 in
+            --append) extra=${2:-}; shift 2 ;;
+            *) die "option inconnue : $1" ;;
+        esac
+    done
+    for f in "$img" "$dtb" "$initrd"; do
+        [ -r "$f" ] || die "fichier illisible : $f"
+    done
+
+    local append dtbname
+    append=$(running_append)
+    [ -n "$append" ] || die "ligne APPEND vide : refus d'écrire un menu incohérent"
+    dtbname=$(basename "$dtb")
+
+    mount_p1
+    rm -rf "$DEST"
+    mkdir -p "$DEST" "$(dirname "$CONF")"
+    cp -- "$img" "$DEST/Image"
+    cp -- "$dtb" "$DEST/$dtbname"
+    cp -- "$initrd" "$DEST/initrd"
+    sync
+
+    {
+        echo "DEFAULT test"
+        echo "MENU TITLE nixelec bench"
+        echo "TIMEOUT 30"
+        echo
+        echo "LABEL test"
+        echo "    MENU LABEL noyau de test (p1)"
+        echo "    LINUX /test/Image"
+        echo "    FDT /test/$dtbname"
+        echo "    INITRD /test/initrd"
+        echo "    APPEND $append $extra"
+    } > "$CONF"
+    sync
+
+    echo "banc armé : $CONF"
+    echo "  $(stat -c%s "$DEST/Image") o Image, $(stat -c%s "$DEST/initrd") o initrd, DTB $dtbname"
+    echo "  append : $append $extra"
+    echo "rebooter pour tester ; 'bench clear' pour revenir à p2."
+}
+
+cmd_clear() {
+    mount_p1
+    rm -rf "${MNT}/extlinux"
+    sync
+    echo "menu de p1 retiré : prochain boot = système de p2"
+}
+
+case ${1:-} in
+    inventory) shift; cmd_inventory "$@" ;;
+    boot-test) shift; cmd_boot_test "$@" ;;
+    clear)     shift; cmd_clear "$@" ;;
+    status)    shift; cmd_status "$@" ;;
+    -h|--help|"") usage ;;
+    *) die "commande inconnue : $1 (voir --help)" ;;
+esac
