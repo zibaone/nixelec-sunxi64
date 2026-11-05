@@ -37,9 +37,9 @@
   #
   # On n'active volontairement PAS `enableRedistributableFirmware` : il embarque
   # les 826 Mo de linux-firmware et fait passer l'image de 590 Mo à 1,5 Go. On
-  # ne copie que les fichiers utiles. `wireless-regdb` fournit regulatory.db,
-  # dont l'absence est signalée à chaque boot par cfg80211.
-  hardware.enableRedistributableFirmware = lib.mkForce false;
+  # ne copie que les fichiers utiles — c'est le module de carte
+  # (`modules/boards/transpeed-8k618-t.nix`) qui les pose désormais, avec
+  # `wireless-regdb` : une image qui n'hérite pas de ce bloc n'a aucun firmware.
 
   # WiFi : le PSK n'est jamais dans ce dépôt. Il est rendu au boot depuis un
   # fichier fourni par la couche de secrets — côté HavenOS, ragenix le dépose
@@ -57,26 +57,8 @@
   # (`modules/boards/transpeed-8k618-t.nix`), elle suit la carte et pas
   # l'exemple — voir le commentaire là-bas.
 
-  hardware.firmware = [
-    (pkgs.runCommand "brcmfmac4334-firmware" { } ''
-      mkdir -p $out/lib/firmware/brcm
-      # Le paquet peut exposer `...-sdio.bin` ou `...-sdio.bin.zst` selon la
-      # variante de linux-firmware (compressée ou non) ; le kernel gère les deux.
-      for f in ${pkgs.linux-firmware}/lib/firmware/brcm/brcmfmac4334-sdio.bin*; do
-        cp -L "$f" $out/lib/firmware/brcm/
-      done
-      cp ${./transpeed-firmware/brcmfmac4334-sdio.txt} \
-         $out/lib/firmware/brcm/brcmfmac4334-sdio.txt
-    '')
-    # `hardware.firmwareCompression = "none"` est posé par la famille sunxi64
-    # (ce noyau n'a pas CONFIG_FW_LOADER_COMPRESS), donc regulatory.db arrive
-    # décompressé : pas d'override local nécessaire ici.
-    pkgs.wireless-regdb
-  ];
-  # La NVRAM vendor contient `macaddr=00:90:4c:c5:12:38` (une adresse Broadcom
-  # de remplissage), mais le firmware utilise en réalité la MAC gravée dans
-  # l'OTP du chip : l'interface est apparue avec 60:21:c0:b1:2d:be. Pas de
-  # collision entre box, la ligne NVRAM ne sert donc pas.
+  # Firmware WiFi (4334 + NVRAM + wireless-regdb) : posé par le module de carte.
+
 
   # Bring-up : accès root sans mot de passe au shell d'urgence de l'initrd.
   # Sans lui, un échec de montage de la racine laisse la box muette (« Cannot

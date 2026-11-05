@@ -1,4 +1,5 @@
 {
+  pkgs,
   lib,
   ...
 }:
@@ -38,4 +39,37 @@
     matchConfig.Driver = "brcmfmac";
     linkConfig.Name = "wlan0";
   };
+
+  # Firmware WiFi : trois pièces, toutes indispensables.
+  #
+  #   - `brcmfmac4334-sdio.bin` (linux-firmware) : le noyau réclame le firmware
+  #     du chip *rapporté*, `BCM4334/3` — pas `brcmfmac43340-sdio.bin`, qui est
+  #     le nom du module Cypress ;
+  #   - `brcmfmac4334-sdio.txt` : la NVRAM, extraite de la partition `vendor` du
+  #     dump Android (`nvram_ap6334.txt`, manfid 0x02d0, boardtype 0x05c1). Sans
+  #     elle, le firmware se charge mais l'initialisation de la radio échoue ;
+  #   - `wireless-regdb` : sans `regulatory.db`, cfg80211 reste sans domaine et
+  #     l'association est refusée.
+  #
+  # Posé ici et non dans l'exemple : une image qui n'hérite pas de ce bloc n'a
+  # aucun firmware (`hardware.firmware` ne contient alors que `lib/`), brcmfmac
+  # ne crée aucune interface et tout échec en aval (wpa_supplicant sur wlan0)
+  # masque la cause réelle.
+  hardware.enableRedistributableFirmware = lib.mkForce false;
+  hardware.firmware = [
+    (pkgs.runCommand "brcmfmac4334-firmware" { } ''
+      mkdir -p $out/lib/firmware/brcm
+      # Le paquet peut exposer `...-sdio.bin` ou `...-sdio.bin.zst` selon la
+      # variante de linux-firmware (compressée ou non) ; le kernel gère les deux.
+      for f in ${pkgs.linux-firmware}/lib/firmware/brcm/brcmfmac4334-sdio.bin*; do
+        cp -L "$f" $out/lib/firmware/brcm/
+      done
+      cp ${./firmware/brcmfmac4334-sdio.txt} \
+         $out/lib/firmware/brcm/brcmfmac4334-sdio.txt
+    '')
+    pkgs.wireless-regdb
+  ];
+  # La NVRAM vendor contient `macaddr=00:90:4c:c5:12:38` (adresse Broadcom de
+  # remplissage), mais le firmware utilise la MAC gravée dans l'OTP du chip :
+  # l'interface est apparue avec 60:21:c0:b1:2d:be. Pas de collision entre box.
 }
