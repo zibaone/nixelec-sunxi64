@@ -311,3 +311,59 @@ jobs:
           path: result/sd-image/*.img*
           if-no-files-found: error
           retention-days: 14
+
+  # Image Transpeed 8K618-T : construite à la demande sur un runner aarch64
+  # natif. C'était la seule façon d'itérer sur le noyau (Ethernet EMAC1 + PHY
+  # AC300) : en local sur x86, chaque rebuild traverse qemu — ~3 h, et un
+  # plantage de la machine au milieu coûte tout le build.
+  image-transpeed:
+    name: Image Transpeed (aarch64 natif)
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.build-image == 'true'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Disk — mount /mnt on /nix when it is a separate volume
+        run: |
+          df -h / /mnt || true
+          if [ -d /mnt ] && [ "$(df --output=target /mnt | tail -1)" = "/mnt" ]; then
+            sudo mkdir -p /mnt/nix /nix
+            sudo mount --bind /mnt/nix /nix
+            echo "=== /nix mounted on /mnt ==="
+          fi
+          df -h / || true
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
+            experimental-features = nix-command flakes
+            max-jobs = 8
+            cores = 0
+
+      - name: Build the SD image
+        run: |
+          set -euo pipefail
+          override=()
+          if [ -n "${{ github.event.inputs.nixpkgs-rev }}" ]; then
+            override=(--override-input nixpkgs "github:NixOS/nixpkgs/${{ github.event.inputs.nixpkgs-rev }}")
+          fi
+          nix build "${override[@]}" -L \
+            .#nixosConfigurations.transpeed-8k618-t.config.system.build.sdImage
+
+      - name: Summary
+        run: |
+          {
+            echo "## Transpeed 8K618-T"
+            echo "- noyau : $(nix eval --raw .#nixosConfigurations.transpeed-8k618-t.config.boot.kernelPackages.kernel.version)"
+            echo "- DTB : $(nix eval --raw .#nixosConfigurations.transpeed-8k618-t.config.hardware.deviceTree.name)"
+            echo "- modules réseau : $(nix eval --json .#nixosConfigurations.transpeed-8k618-t.config.boot.kernelModules)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: transpeed-sd-image
+          path: result/sd-image/*.img*
+          if-no-files-found: error
+          retention-days: 14
