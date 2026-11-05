@@ -16,6 +16,29 @@
   hardware.nixbian.board = lib.mkDefault "transpeed-8k618-t";
   hardware.nixbian.kernelVendor = lib.mkDefault "edge";
 
+  # Ethernet : le RJ45 est sur EMAC1, relié au PHY AC200/AC300 co-packagé
+  # (MDIO addr 0). Rien de tout cela n'est dans l'arbre 7.0.14 — mesures et
+  # contrat DT complets dans la skill `sunxi-h618-board-bringup`.
+  #
+  # Posé ici et pas dans `family/sunxi64.nix` : `extraPatches` et
+  # `extraConfig` changent l'entrée du noyau, donc son hash. Au niveau
+  # famille, la Zero3 et les autres cartes H616 reconstruiraient leur noyau
+  # pour rien (parité de cache). La carte porte ses propres faits.
+  #
+  # `CONFIG_AC300_PHY=y` : le driver PHY doit être enregistré avant le probe
+  # du MAC, sinon `genphy` s'attache au PHY et n'en décroche plus.
+  # `CONFIG_DWMAC_SUN8I=m` : un rebuild noyau aarch64 coûte ~45 min, alors
+  # qu'un module se recompile en ~2 min et se transfère par UART — c'est ce
+  # qui rend l'itération possible sur le link-up.
+  hardware.nixbian.extraPatches = [
+    ../../patches/kernel/0001-net-phy-add-ac300-ephy.patch
+    ../../patches/kernel/0002-arm64-dts-h616-emac1-ac300.patch
+  ];
+  hardware.nixbian.extraConfig = lib.mkAfter ''
+    CONFIG_AC300_PHY=y
+    CONFIG_DWMAC_SUN8I=m
+  '';
+
   # Broadcom BCM4334 (SDIO 0x02d0:0x4334, module AP6334). Le pilote est
   # `brcmfmac`, dans le noyau : contrairement à l'UWE5622 il n'y a pas de
   # module hors arbre à construire. Le marqueur évite que `nixelec.wifi`
