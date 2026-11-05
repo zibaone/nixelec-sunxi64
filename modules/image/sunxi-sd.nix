@@ -9,23 +9,14 @@
 {
   imports = [ (modulesPath + "/installer/sd-card/sd-image.nix") ];
 
-  # Banc d'essai : dépose un noyau de test sur p1 et un menu extlinux qui prend
-  # la main au prochain boot (voir docs/specs/banc-validation-plateforme.md
-  # côté HavenOS).
+  # Banc d'essai : installe un noyau de test dans /boot/test et l'arme dans
+  # l'extlinux que U-Boot lit réellement (mesuré : il ne scanne pas p1).
   environment.systemPackages = [ (pkgs.callPackage ../../packages/bench { }) ];
 
   image.fileName = lib.mkDefault "nixelec-sunxi64-${config.hardware.nixbian.board}.img";
 
   sdImage = {
     compressImage = lib.mkDefault true;
-
-    # p1 ne sert pas qu'à l'amorçage : c'est le banc d'essai. Les 30 Mio par
-    # défaut ne tiennent même pas l'Image du noyau (36 321 792 o mesurés sur
-    # sunxi64-edge), et les chemins d'un extlinux.conf sont relatifs à la
-    # partition qui le porte : p1 doit donc contenir l'Image, le DTB et
-    # l'initrd pour être autonome. 128 Mio laissent cette place, sans rien
-    # changer au boot tant qu'aucun menu n'y est déposé.
-    firmwareSize = lib.mkDefault 128;
 
     # nixbian ajoute `root=LABEL=nixos` à la ligne de commande, alors que
     # nixpkgs' sd-image étiquette la partition racine `NIXOS_SD`
