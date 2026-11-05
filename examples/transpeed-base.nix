@@ -75,6 +75,18 @@
   # `performance` ne fait plus qu'un set_rate à l'init, comme au démarrage.
   boot.kernelParams = [ "cpufreq.default_governor=performance" ];
 
+  # Ethernet : le glue Sun8i est un module (voir family/sunxi64.nix) — sans ce
+  # chargement explicite il n'est pas dans la fermeture système et le MAC reste
+  # sans driver. `iw`/`tcpdump`/`ethtool` servent aux essais réseau (Ethernet
+  # comme WiFi : un `iw dev wlan0 scan` émet sans identifiants, donc il
+  # reproduit la panique brcmfmac sans poser de secret sur la console UART).
+  boot.kernelModules = [ "dwmac-sun8i" ];
+  environment.systemPackages = with pkgs; [
+    ethtool
+    iw
+    tcpdump
+  ];
+
   nix.settings.experimental-features = [
     "nix-command"
     "flakes"
