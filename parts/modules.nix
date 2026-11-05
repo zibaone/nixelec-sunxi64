@@ -79,9 +79,13 @@ in
           ../modules/boards/transpeed-8k618-t.nix
         ];
 
-        nixelec.kernelPackage = lib.mkDefault (familyKernel {
-          inherit config pkgs;
-        });
+        # Pas de `familyKernel` ici : cette carte porte ses propres patches
+        # noyau (Ethernet EMAC1 + PHY AC300) et sa propre config, posés par
+        # `modules/boards/transpeed-8k618-t.nix`. Un paquet noyau de famille
+        # les ignorerait (`boot.kernelPackages` est forcé), donc `null` laisse
+        # nixbian construire le noyau de la carte. Aucune autre carte n'est
+        # affectée : le chemin de store diffère, et c'est voulu.
+        nixelec.kernelPackage = null;
       };
 
     # Driver-agnostic WPA client: wpa_supplicant + PSK rendered from a secret
