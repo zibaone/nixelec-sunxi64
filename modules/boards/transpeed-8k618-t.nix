@@ -1,4 +1,5 @@
 {
+  config,
   pkgs,
   lib,
   ...
@@ -27,23 +28,47 @@
   #
   # `CONFIG_AC300_PHY=y` : le driver PHY doit être enregistré avant le probe
   # du MAC, sinon `genphy` s'attache au PHY et n'en décroche plus.
-  # `CONFIG_DWMAC_SUN8I=m` : un rebuild noyau aarch64 coûte ~45 min, alors
-  # qu'un module se recompile en ~2 min et se transfère par UART — c'est ce
-  # qui rend l'itération possible sur le link-up.
+  # `CONFIG_AW_GMAC=m` + `CONFIG_AW_GMAC_MDIO=m` + `CONFIG_AW_EPHY=m` : le
+  # pilote Ethernet retenu est celui du vendor, hors arbre
+  # (`packages/sunxi-gmac`). La variante mainline ne reçoit **aucune** trame
+  # ici (MAC/DMA/ring prouvés sains par loopback, PHY configuré, `rx_packets`
+  # reste à 0), donc `CONFIG_DWMAC_SUN8I` est désactivé sur cette carte.
+  # Les .ko restent des modules : un rebuild noyau aarch64 coûte ~45 min,
+  # contre ~2 min pour recompiler et transférer un module par UART.
   hardware.nixbian.extraPatches = [
     ../../patches/kernel/0001-net-phy-add-ac300-ephy.patch
     ../../patches/kernel/0002-arm64-dts-h616-emac1-ac300.patch
     ../../patches/kernel/0003-net-stmmac-sun8i-h616-emac1.patch
+    ../../patches/kernel/0004-arm64-dts-h616-transpeed-sunxi-gmac.patch
   ];
   hardware.nixbian.extraConfig = lib.mkAfter ''
     CONFIG_AC300_PHY=y
-    CONFIG_DWMAC_SUN8I=m
+    CONFIG_AW_GMAC=m
+    CONFIG_AW_GMAC_MDIO=m
+    CONFIG_AW_EPHY=m
+    CONFIG_DWMAC_SUN8I=n
     # Le 24 MHz du PHY AC300 est fabriqué par le canal 5 du PWM : le PWM
     # mainline (`sun4i`) ne gère pas H616, c'est le driver vendor qui prend
     # le nœud. Sans lui, pas de `pwm-clock`, donc pas de REF_CLK RMII et le
     # reset du MAC rend `-110`.
     CONFIG_PWM_SUNXI_ENHANCE=m
   '';
+
+  # Ethernet : deux modules hors arbre, chargés dans cet ordre.
+  # `pwm-sunxi-enhance` d'abord (il fabrique le 24 MHz du PHY via `pwm-clock`),
+  # puis le bus MDIO, puis le MAC. Mesuré : dans le désordre, le PHY tombe sur
+  # `genphy` et n'en décroche plus.
+  boot.extraModulePackages = [
+    (pkgs.callPackage ../../packages/sunxi-gmac {
+      kernel = config.boot.kernelPackages.kernel;
+    })
+  ];
+  boot.kernelModules = [
+    "pwm-sunxi-enhance"
+    "clk-pwm"
+    "sunxi-mdio"
+    "sunxi-gmac"
+  ];
 
   # Broadcom BCM4334 (SDIO 0x02d0:0x4334, module AP6334). Le pilote est
   # `brcmfmac`, dans le noyau : contrairement à l'UWE5622 il n'y a pas de

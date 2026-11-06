@@ -1,0 +1,78 @@
+From: Hermes <hermes@local>
+Subject: [PATCH 4/4] arm64: dts: allwinner: h618: Transpeed Ethernet en mode vendor
+
+Le pilote retenu pour cette carte est le `sunxi-gmac` du vendor (hors arbre,
+`packages/sunxi-gmac`) : la variante mainline ne recoit aucune trame ici.
+Ce patch bascule le noeud `emac1` sur le compatible vendor et deplace le PHY
+sur un noeud MDIO separe, que `sunxi-mdio` pilote (le driver vendor ne cree
+pas de bus et n'appelle pas of_platform_populate).
+
+Deux proprietes mesurees sur la carte sont posees ici :
+  - allwinner,syscfg-value = <0x3fe1> (la logique du BSP ecrit 0x5bfe0, qui
+    coupe l'EPHY : PHY muet, phy_poll_reset -110) ;
+  - allwinner,no-crc-check (le MAC compte 7 octets de preambule dans la
+    longueur de trame, le CRC de chaque trame est faux alors que les donnees
+    sont saines).
+
+Mesures : docs/etude-portage-sunxi-gmac.md, section 7.3.
+
+---
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h618-transpeed-8k618-t.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h618-transpeed-8k618-t.dts
+@@ -296,3 +296,56 @@
+ 		nvmem-cell-names = "calibration";
+ 	};
+ };
++
++/* Ethernet : mode vendor `sunxi-gmac` (pilote hors arbre, packages/sunxi-gmac).
++ *
++ * Le MAC est celui du vendor et le PHY est declare sur un noeud MDIO separe :
++ * le driver vendor ne cree pas de bus MDIO (`sunxi-mdio` le fait) et n'appelle
++ * pas of_platform_populate, donc un noeud enfant de `emac1` ne serait jamais
++ * probe.
++ *
++ * Deux proprietes mesurees sur cette carte (docs/etude-portage-sunxi-gmac.md) :
++ *  - allwinner,syscfg-value = <0x3fe1> : la logique du BSP ecrit 0x5bfe0, ce
++ *    qui coupe l'EPHY (PHY muet, phy_poll_reset -110) ;
++ *  - allwinner,no-crc-check : le MAC compte 7 octets de preambule dans la
++ *    longueur de trame, donc le CRC de chaque trame est faux alors que les
++ *    donnees sont saines.
++ */
++&emac1 {
++	compatible = "allwinner,sunxi-gmac";
++	reg = <0x05030000 0x10000>, <0x03000034 0x4>;
++	interrupts = <GIC_SPI 15 IRQ_TYPE_LEVEL_HIGH>;
++	interrupt-names = "gmacirq";
++	clocks = <&ccu CLK_BUS_EMAC1>;
++	clock-names = "gmac";
++	pinctrl-names = "default";
++	pinctrl-0 = <&rmii_pins>;
++	phy-mode = "rmii";
++	phy-handle = <&ac300_ephy_v>;
++	tx-delay = <7>;
++	rx-delay = <31>;
++	allwinner,syscfg-value = <0x3fe1>;
++	allwinner,no-crc-check;
++	status = "okay";
++};
++
++&{/soc} {
++	ac300_mdio_v: mdio@5030048 {
++		compatible = "allwinner,sunxi-mdio";
++		reg = <0x05030048 0x8>;
++		#address-cells = <1>;
++		#size-cells = <0>;
++		status = "okay";
++
++		ac300_ephy_v: ethernet-phy@0 {
++			compatible = "allwinner,sun50i-h618-ac300-ephy",
++				     "ethernet-phy-id0044.1400",
++				     "ethernet-phy-ieee802.3-c22";
++			reg = <0>;
++			clocks = <&ccu CLK_EMAC_25M>, <&ac300_pwm_clk>;
++			clock-names = "ephy", "pwm";
++			nvmem-cells = <&ephy_calib>;
++			nvmem-cell-names = "calibration";
++		};
++	};
++};

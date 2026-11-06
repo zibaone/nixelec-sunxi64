@@ -272,6 +272,33 @@ passe, y compris les trames de 1500 octets.
 corriger la valeur du sysconf, écarter leur MDIO et désactiver le contrôle CRC du
 MAC.
 
+### 7.4 Intégration (P2)
+
+Le pilote est entré dans le dépôt, avec la même structure que les autres modules
+hors arbre :
+
+| Élément | Emplacement |
+|---|---|
+| sources vendor | `packages/sunxi-gmac/src/` (pristine) |
+| delta | `packages/sunxi-gmac/patches/0001-port-7.0-transpeed.patch` (249 l.) |
+| dérivation | `packages/sunxi-gmac/default.nix` |
+| nœud DT | `patches/kernel/0004-arm64-dts-h616-transpeed-sunxi-gmac.patch` |
+| carte | `modules/boards/transpeed-8k618-t.nix` (config noyau, `boot.extraModulePackages`, ordre de `boot.kernelModules`) |
+| CI | job `cache` : construit et pousse `.#packages.aarch64-linux.sunxi-gmac` |
+
+Les deux rustines de la session de mesure ne sont plus codées en dur : elles sont
+derrière `allwinner,syscfg-value` et `allwinner,no-crc-check`, posées par le
+patch DTS de la carte. Le portage propre (propriétés DT au lieu des valeurs
+forcées) a été **revérifié sur le banc** : lien monté, 10/10 pings du PC, 0 % de
+perte.
+
+Vérifications faites avant commit : le patch s'applique à blanc sur les sources
+vendorisées, la dérivation s'évalue (`sunxi-gmac-7.0.14`), le toplevel de la
+carte s'évalue, et le DTS produit par 0002 puis 0004 compile en DTB avec le
+`compatible` vendor, `phy-handle` sur le PHY du nœud MDIO et les deux propriétés.
+Le build complet (noyau + module) est laissé au CI aarch64 : localement il
+imposerait ~45 min d'émulation.
+
 ## 8. Critères d'arrêt
 
 - P0 positif → arrêt du portage, un correctif d'horloge suffit.

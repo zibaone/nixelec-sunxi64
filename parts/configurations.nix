@@ -42,6 +42,15 @@
   flake.packages.aarch64-linux.transpeed-8k618-t-sd-image =
     self.nixosConfigurations.transpeed-8k618-t.config.system.build.sdImage;
 
+  # Pilote Ethernet vendor de la Transpeed, hors arbre. Construit contre le
+  # noyau de la carte (qui porte les patches 0001-0004), donc hors du système :
+  # le CI doit le construire et le pousser explicitement pour le cache.
+  flake.packages.aarch64-linux.sunxi-gmac =
+    inputs.nixpkgs.legacyPackages.aarch64-linux.callPackage ../packages/sunxi-gmac
+      {
+        kernel = self.nixosConfigurations.transpeed-8k618-t.config.boot.kernelPackages.kernel;
+      };
+
   # SPI fallback bootloader: U-Boot alone, written at SPI offset 0 (not 8 KiB,
   # which is the SD offset). The SPL header is eGON.BT0 and the U-Boot FIT
   # follows at 0xA000. `flash-spi-uboot` on the board backs up the SPI first.
