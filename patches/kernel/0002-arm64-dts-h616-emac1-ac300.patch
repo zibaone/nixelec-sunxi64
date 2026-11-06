@@ -1,21 +1,21 @@
 From: Hermes <hermes@local>
 Subject: [PATCH 2/3] arm64: dts: allwinner: h618: Transpeed 8K618-T Ethernet
 
-EMAC1 + PHY AC300 co-package : variante amont h616-emac1 (syscon 0x34,
-pas de machinerie PHY interne H3), PHY sur mdio1 avec ses deux horloges
-(25 MHz CCU + 24 MHz PWM5), 24 MHz fabriquee par pwm-clock sur le canal 5.
+EMAC1 + PHY AC300 co-package. Design net-next v6 (variante h616-emac1,
+syscon 0x34, pas de machinerie PHY interne H3), PHY sur mdio1 avec ses deux
+horloges (25 MHz CCU + 24 MHz PWM5) et la cellule de calibration du SID.
 
 ---
 --- a/arch/arm64/boot/dts/allwinner/sun50i-h618-transpeed-8k618-t.dts
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h618-transpeed-8k618-t.dts
-@@ -224,3 +224,62 @@
+@@ -224,3 +224,75 @@
  &usbphy {
  	status = "okay";
  };
 +
-+/* Horloge 24 MHz du PHY AC300, fabriquee par le canal 5 du PWM.
-+ * Le pinctrl doit rester sur le noeud du canal (le driver PWM vendor le
-+ * reclame), sinon conflit sur PA12 avec le noeud d'horloge.
++/* Horloge 24 MHz du PHY AC300, fabriquee par le canal 5 du PWM. Le pinctrl
++ * doit rester sur le noeud du canal (le driver PWM vendor le reclame), sinon
++ * conflit sur PA12 avec le noeud d'horloge.
 + */
 +/ {
 +	ac300_pwm_clk: ac300-clk {
@@ -35,11 +35,11 @@ pas de machinerie PHY interne H3), PHY sur mdio1 avec ses deux horloges
 +	pinctrl-0 = <&pwm5_pin>;
 +};
 +
-+/* Ethernet : le RJ45 est sur EMAC1, relie au PHY AC300 co-packaged.
-+ * Le noeud du dtsi est la forme vendor `sunxi-gmac` qu'aucun driver mainline
-+ * ne pilote. Design de la serie amont net-next v6 (variante `h616-emac1`,
-+ * syscon 0x34, pas de machinerie PHY interne H3) + reset du MAC deplace a
-+ * l'ouverture de l'interface (patch 0003).
++/* Ethernet : le RJ45 est sur EMAC1, relie au PHY AC300 co-packaged (liaison
++ * interne, pas de PHY externe). Le noeud du dtsi est la forme vendor
++ * `sunxi-gmac` qu'aucun driver mainline ne pilote : on le reprend avec le
++ * design de la serie amont net-next v6, PHY declare sur mdio1 et pilote par
++ * son propre driver.
 + */
 +&emac1 {
 +	compatible = "allwinner,sun50i-h616-emac1";
@@ -56,7 +56,18 @@ pas de machinerie PHY interne H3), PHY sur mdio1 avec ses deux horloges
 +	pinctrl-0 = <&rmii_pins>;
 +	phy-mode = "rmii";
 +	phy-handle = <&ac300_ephy>;
++	allwinner,rx-delay-ps = <3100>;
++	allwinner,tx-delay-ps = <700>;
 +	status = "okay";
++};
++
++&sid {
++	/* Calibration EPHY, meme offset que le H6 (sun50i-h6.dtsi:376) : mesure
++	 * a 0x0506 sur cette carte. Sans elle le driver garde caldata=0.
++	 */
++	ephy_calib: ephy-calibration@2c {
++		reg = <0x2c 0x2>;
++	};
 +};
 +
 +&mdio1 {
@@ -69,5 +80,7 @@ pas de machinerie PHY interne H3), PHY sur mdio1 avec ses deux horloges
 +		reg = <0>;
 +		clocks = <&ccu CLK_EMAC_25M>, <&ac300_pwm_clk>;
 +		clock-names = "ephy", "pwm";
++		nvmem-cells = <&ephy_calib>;
++		nvmem-cell-names = "calibration";
 +	};
 +};
