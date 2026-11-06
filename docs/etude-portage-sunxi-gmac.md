@@ -176,6 +176,70 @@ référence, et la première tentative sérieuse tue le PHY ou la box.
 
 Le critère d'arrêt de la section 8 est atteint : **arrêt du portage**.
 
+### 7.2 Reprise P1 bis — le MAC vendor fonctionne, le RX est corrompu
+
+Reprise après « on y est presque » : le diagnostic de 7.1 était incomplet. En
+instrumentant le driver (`pr_info` à chaque étape), quatre causes distinctes ont
+été isolées et trois ont été levées.
+
+**1. La valeur écrite dans le sysconf tue le PHY.** Le driver calcule `0x5bfe0` :
+il conserve les bits 15/16/18 hérités du boot et ajoute RMII + délais. Sur cette
+puce, **le bit 15 doit être CLEAR** : avec `0x5bfe0` le PHY ne répond plus
+(`phy_poll_reset: -110`, lectures `0xffff`) ; avec la valeur mainline `0x3fe1`
+(bit 15 clear, RMII, délais rx=31 tx=7) le PHY survit et **le lien monte**. À
+noter : leur `sunxi_gmac_clk_disable()` fait `writel(0, chip->syscfg_base)`, donc
+tout passage par un chemin d'erreur efface aussi les bits EPHY.
+
+**2. Le driver MDIO du vendor est inutilisable sur ce SoC.** `sunxi-mdio` posé
+sur `mdio@5030048` enregistre bien un bus, mais **toutes ses lectures rendent 0**,
+y compris `phy_id` (donc `0x00000000`). Le même bloc lu depuis userspace
+(`/dev/mem`) donne les bonnes valeurs : `BMCR=0x3100`, `BMSR=0x79ed`,
+`reg 0x13=0x0102`. Le PHY est sain ; c'est la séquence du vendor qui est fausse.
+Son layout de bits est pourtant identique au mainline (phy addr 12-16, reg 4-10,
+MDC div 20-22) : la différence est ailleurs (diviseur MDC codé en dur à 3, valeur
+qui ne correspond pas à l'horloge CSR de cette puce ; passer à 4 ne suffit pas).
+
+**3. Le MAC vendor reçoit réellement les trames.** Dump du descripteur RX brut :
+
+```
+d0=0x00478383  d1=0x010007ff  d2=0xefe9f000  len=71
+```
+
+soit `crc=1`, `ipch=1`, `err_sum=1`, `last_desc=1`, `first_desc=1`, longueur
+`0x47` = 71. `d1` = 2047 (buffer de 2048) et `d2` avance de `0x800` en `0x800` :
+**le ring DMA est correctement construit**. Le parsing du descripteur est conforme
+au mainline (`RDES0_CRC_ERROR=BIT(1)`, `RDES0_IPC_CSUM_ERROR=BIT(7)`,
+`RDES0_ERROR_SUMMARY=BIT(15)`, `RDES0_OWN=BIT(31)`).
+
+**4. Les trames sont bonnes en tête, fausses en queue.** Dump des octets
+(`__va(desc->desc2)`) :
+
+```
+bytes=2ea67b6cb5dd 3499 71def1db 0806 0001
+```
+
+= MAC destination locale, MAC source `34:99:71:de:f1:db` (le dongle du PC),
+EtherType `0806` (**ARP**), `0001` (request). L'en-tête est intact, mais la
+longueur annoncée est **71 au lieu de ~46** et les sommes de contrôle échouent.
+
+**Conséquence pratique : en ignorant `crc`/`ipch` dans le driver et en ne
+rejetant que `len_err`/`over_err`/`mii_err`/`desc_err`, les trames atteignent la
+pile.** Mesuré :
+
+```
+4 packets transmitted, 0 received, +4 corrupted, 100% packet loss
+rx_packets=11
+```
+
+Le RX **fonctionne** : les paquets arrivent, le noyau les compte comme corrompus
+et les jette. Le balayage du `rx_delay` du MAC (bits 5-9, valeurs 0 à 31 sans
+reboot) ne change rien — probablement non relu à chaud.
+
+**État : le blocage n'est plus « pas de RX » mais « RX corrompu en fin de trame »
+(longueur +25 octets, checksums faux).** La piste restante est le timing RMII
+côté PHY (échantillonnage / terminaison), plus le réglage statique du sysconf
+appliqué au boot.
+
 ## 8. Critères d'arrêt
 
 - P0 positif → arrêt du portage, un correctif d'horloge suffit.
