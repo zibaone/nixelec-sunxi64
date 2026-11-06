@@ -1,36 +1,14 @@
 From: Hermes <hermes@local>
-Subject: [PATCH 3/3] net: stmmac: sun8i: H616 EMAC1, reset apres init PHY + mode SIP EPHY
+Subject: [PATCH 3/3] net: stmmac: sun8i: H616 EMAC1 (reset apres init PHY)
 
-Portage de la serie net-next v6 (reset du MAC dans dma_reset via un helper
-prenant ioaddr, variante allwinner,sun50i-h616-emac1, syscon 0x34, RMII seul)
-plus le mode SIP EPHY du driver vendor sunxi-gmac (SYSCFG 0x180 bit 0) : le
-PHY AC300/AC200 est relie en interne au MAC, et sans ce bit le MAC reste sur
-les broches externes.
+Portage de la serie net-next v6 : reset du MAC deplace dans dma_reset via un
+helper prenant ioaddr (au probe la REF_CLK RMII n'existe pas encore), et
+variante allwinner,sun50i-h616-emac1 (syscon 0x34, RMII seul).
 
 ---
 --- a/drivers/net/ethernet/stmicro/stmmac/dwmac-sun8i.c
 +++ b/drivers/net/ethernet/stmicro/stmmac/dwmac-sun8i.c
-@@ -49,6 +49,11 @@
- 	bool support_mii;
- 	bool support_rmii;
- 	bool support_rgmii;
-+	/* Le PHY co-packagé est relié en interne : le mode SIP doit etre
-+	 * bascule sur l'EPHY (registre SYSCFG 0x180, bit 0), comme le fait
-+	 * le driver vendor sunxi-gmac.
-+	 */
-+	bool sip_mode_ephy;
- 	u8 rx_delay_max;
- 	u8 tx_delay_max;
- };
-@@ -72,6 +77,7 @@
- 	struct reset_control *rst_ephy;
- 	const struct emac_variant *variant;
- 	struct regmap_field *regmap_field;
-+	struct regmap_field *sip_mode_field;
- 	bool internal_phy_powered;
- 	bool use_internal_phy;
- 	void *mux_handle;
-@@ -84,6 +90,13 @@
+@@ -84,6 +84,13 @@
  	.msb = 31,
  };
  
@@ -44,7 +22,7 @@ les broches externes.
  /* EMAC clock register @ 0x164 in the CCU address range */
  static const struct reg_field sun8i_ccu_reg_field = {
  	.reg = 0x164,
-@@ -146,6 +159,20 @@
+@@ -146,6 +153,19 @@
  	.tx_delay_max = 7,
  };
  
@@ -53,7 +31,6 @@ les broches externes.
 +	/* The co-packaged AC200/AC300 PHY does not use the H3 PHY controls. */
 +	.soc_has_internal_phy = false,
 +	.support_rmii = true,
-+	.sip_mode_ephy = true,
 +	/* Mesure Transpeed 8K618-T : sans lignes a retard RX, le MAC emet mais
 +	 * ne recoit rien (ARP part, les reponses n'arrivent jamais). Les valeurs
 +	 * sont celles du DTSI de reference jernejsk (rx 3100 ps, tx 700 ps).
@@ -65,7 +42,7 @@ les broches externes.
  #define EMAC_BASIC_CTL0 0x00
  #define EMAC_BASIC_CTL1 0x04
  #define EMAC_INT_STA    0x08
-@@ -272,11 +299,33 @@
+@@ -272,11 +292,33 @@
  #define SYSCON_ETCS_EXT_GMII	0x1
  #define SYSCON_ETCS_INT_GMII	0x2
  
@@ -99,7 +76,7 @@ les broches externes.
  	writel(0, ioaddr + EMAC_RX_CTL1);
  	writel(0, ioaddr + EMAC_TX_CTL1);
  	writel(0, ioaddr + EMAC_RX_FRM_FLT);
-@@ -284,7 +333,7 @@
+@@ -284,7 +326,7 @@
  	writel(0, ioaddr + EMAC_TX_DESC_LIST);
  	writel(0, ioaddr + EMAC_INT_EN);
  	writel(0x1FFFFFF, ioaddr + EMAC_INT_STA);
@@ -108,7 +85,7 @@ les broches externes.
  }
  
  /* sun8i_dwmac_dma_init() - initialize the EMAC
-@@ -746,27 +795,6 @@
+@@ -746,27 +788,6 @@
  	writel(v, ioaddr + EMAC_TX_FLOW_CTL);
  }
  
@@ -136,7 +113,7 @@ les broches externes.
  /* Search in mdio-mux node for internal PHY node and get its clk/reset */
  static int get_ephy_nodes(struct stmmac_priv *priv)
  {
-@@ -903,7 +931,9 @@
+@@ -903,7 +924,9 @@
  		/* After changing syscon value, the MAC need reset or it will
  		 * use the last value (and so the last PHY set).
  		 */
@@ -147,36 +124,7 @@ les broches externes.
  	}
  	return ret;
  }
-@@ -1191,6 +1221,28 @@
- 		return ret;
- 	}
- 
-+	if (gmac->variant->sip_mode_ephy) {
-+		struct reg_field sip_field = {
-+			.reg = 0x180,
-+			.lsb = 0,
-+			.msb = 0,
-+		};
-+
-+		gmac->sip_mode_field = devm_regmap_field_alloc(dev, regmap, sip_field);
-+		if (IS_ERR(gmac->sip_mode_field))
-+			return PTR_ERR(gmac->sip_mode_field);
-+
-+		/* Le MAC doit etre en mode "SIP EPHY" pour voir le PHY interne. */
-+		ret = regmap_field_write(gmac->sip_mode_field, 1);
-+		if (ret)
-+			return ret;
-+	}
-+	if (IS_ERR(gmac->regmap_field)) {
-+		ret = PTR_ERR(gmac->regmap_field);
-+		dev_err(dev, "Unable to map syscon register: %d\n", ret);
-+		return ret;
-+	}
-+
- 	plat_dat = devm_stmmac_probe_config_dt(pdev, stmmac_res.mac);
- 	if (IS_ERR(plat_dat))
- 		return PTR_ERR(plat_dat);
-@@ -1237,10 +1289,6 @@
+@@ -1237,10 +1260,6 @@
  			dev_err(&pdev->dev, "Failed to register mux\n");
  			goto dwmac_mux;
  		}
@@ -187,7 +135,7 @@ les broches externes.
  	}
  
  	pm_runtime_put(&pdev->dev);
-@@ -1300,6 +1348,8 @@
+@@ -1300,6 +1319,8 @@
  		.data = &emac_variant_h6 },
  	{ .compatible = "allwinner,sun50i-h616-emac",
  		.data = &emac_variant_h6 },
