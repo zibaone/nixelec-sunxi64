@@ -240,6 +240,38 @@ reboot) ne change rien — probablement non relu à chaud.
 côté PHY (échantillonnage / terminaison), plus le réglage statique du sysconf
 appliqué au boot.
 
+### 7.3 Résultat final — Ethernet fonctionnel
+
+Deux corrections supplémentaires ont suffi :
+
+1. **le bus MDIO doit être celui du mainline, pas celui du vendor** : `sunxi-mdio`
+   lit toujours 0 ; en gardant le bus créé par le driver mainline (ou en lisant le
+   bloc MDIO directement), le PHY répond normalement (`BMCR=0x3100`,
+   `BMSR=0x79ed`) ;
+2. **désactiver le contrôle CRC du MAC** (`RX_CTL0` bit 27, `SUNXI_GMAC_CRC_OFFSET`)
+   : le MAC compte 7 octets de préambule en trop dans la longueur, ce qui invalide
+   le CRC de chaque trame alors que les données sont saines.
+
+**Mesures de bout en bout, PC → box, avec le driver vendor :**
+
+| Test | Résultat |
+|---|---|
+| `ping -c 10` (56 o) | **30/30, 0 % de perte** (3 séries) |
+| `ping -c 10 -s 1000` | **10/10, 0 %** |
+| `ping -c 10 -s 1400` | **10/10, 0 %** |
+| `ping -c 10 -s 1472` | **10/10, 0 %** |
+
+ARP résolu, MAC de la box `06:4e:91:68:b1:5a` ; `ss -ltn` montre sshd sur
+`0.0.0.0:22` (le TCP/22 est refusé par le pare-feu du banc, pas par le réseau).
+
+Anomalie résiduelle, non bloquante : quand c'est la **box** qui ping, ses propres
+échos de réponse sont comptés `corrupted` par la pile ; dans le sens PC → box tout
+passe, y compris les trames de 1500 octets.
+
+**Conclusion : le portage vendor est viable sur cette carte** — il aura fallu
+corriger la valeur du sysconf, écarter leur MDIO et désactiver le contrôle CRC du
+MAC.
+
 ## 8. Critères d'arrêt
 
 - P0 positif → arrêt du portage, un correctif d'horloge suffit.
