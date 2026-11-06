@@ -33,10 +33,16 @@
   hardware.nixbian.extraPatches = [
     ../../patches/kernel/0001-net-phy-add-ac300-ephy.patch
     ../../patches/kernel/0002-arm64-dts-h616-emac1-ac300.patch
+    ../../patches/kernel/0003-net-stmmac-sun8i-h616-emac1.patch
   ];
   hardware.nixbian.extraConfig = lib.mkAfter ''
     CONFIG_AC300_PHY=y
     CONFIG_DWMAC_SUN8I=m
+    # Le 24 MHz du PHY AC300 est fabriqué par le canal 5 du PWM : le PWM
+    # mainline (`sun4i`) ne gère pas H616, c'est le driver vendor qui prend
+    # le nœud. Sans lui, pas de `pwm-clock`, donc pas de REF_CLK RMII et le
+    # reset du MAC rend `-110`.
+    CONFIG_PWM_SUNXI_ENHANCE=m
   '';
 
   # Broadcom BCM4334 (SDIO 0x02d0:0x4334, module AP6334). Le pilote est

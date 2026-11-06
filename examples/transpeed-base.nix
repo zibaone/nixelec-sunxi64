@@ -79,7 +79,15 @@
   # sans driver. `iw`/`tcpdump`/`ethtool` servent aux essais réseau (Ethernet
   # comme WiFi : un `iw dev wlan0 scan` émet sans identifiants, donc il
   # reproduit la panique brcmfmac sans poser de secret sur la console UART).
-  boot.kernelModules = [ "dwmac-sun8i" ];
+  # Chaine Ethernet : le PWM vendor fabrique le 24 MHz du PHY AC300 (via
+  # `pwm-clock`), donc ces modules doivent être présents dans la fermeture —
+  # nixbian élague tout module non référencé. L'ordre n'importe pas : le
+  # driver PHY diffère son probe tant que l'horloge n'existe pas.
+  boot.kernelModules = [
+    "pwm-sunxi-enhance"
+    "clk-pwm"
+    "dwmac-sun8i"
+  ];
   environment.systemPackages = with pkgs; [
     ethtool
     iw

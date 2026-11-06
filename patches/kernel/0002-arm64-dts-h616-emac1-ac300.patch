@@ -1,18 +1,49 @@
---- a/arch/arm64/boot/dts/allwinner/sun50i-h618-transpeed-8k618-t.dts	2026-11-05 15:27:29.679924206 +0100
-+++ b/arch/arm64/boot/dts/allwinner/sun50i-h618-transpeed-8k618-t.dts	2026-11-05 15:27:29.680032188 +0100
-@@ -224,3 +224,39 @@
+From: Hermes <hermes@local>
+Subject: [PATCH 2/3] arm64: dts: allwinner: h618: Transpeed 8K618-T Ethernet
+
+EMAC1 + PHY AC300 co-package : variante amont h616-emac1 (syscon 0x34,
+pas de machinerie PHY interne H3), PHY sur mdio1 avec ses deux horloges
+(25 MHz CCU + 24 MHz PWM5), 24 MHz fabriquee par pwm-clock sur le canal 5.
+
+---
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h618-transpeed-8k618-t.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h618-transpeed-8k618-t.dts
+@@ -224,3 +224,62 @@
  &usbphy {
  	status = "okay";
  };
 +
-+/* Ethernet : le RJ45 est sur EMAC1, relie au PHY AC200/AC300 co-packaged.
-+ * Le noeud du dtsi est la forme vendor `sunxi-gmac` (qu'aucun driver mainline
-+ * ne pilote) : on le reprend ici, sans toucher au dtsi partage, pour ne pas
-+ * modifier l'Ethernet des autres cartes H616.
++/* Horloge 24 MHz du PHY AC300, fabriquee par le canal 5 du PWM.
++ * Le pinctrl doit rester sur le noeud du canal (le driver PWM vendor le
++ * reclame), sinon conflit sur PA12 avec le noeud d'horloge.
++ */
++/ {
++	ac300_pwm_clk: ac300-clk {
++		compatible = "pwm-clock";
++		#clock-cells = <0>;
++		clock-frequency = <24000000>;
++		pwms = <&pwm 5 42 0>;
++	};
++};
++
++&pwm {
++	status = "okay";
++};
++
++&pwm5 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pwm5_pin>;
++};
++
++/* Ethernet : le RJ45 est sur EMAC1, relie au PHY AC300 co-packaged.
++ * Le noeud du dtsi est la forme vendor `sunxi-gmac` qu'aucun driver mainline
++ * ne pilote. Design de la serie amont net-next v6 (variante `h616-emac1`,
++ * syscon 0x34, pas de machinerie PHY interne H3) + reset du MAC deplace a
++ * l'ouverture de l'interface (patch 0003).
 + */
 +&emac1 {
-+	compatible = "allwinner,sun50i-h616-emac";
-+	syscon = <&syscon 1>;
++	compatible = "allwinner,sun50i-h616-emac1";
++	syscon = <&syscon>;
 +	reg = <0x05030000 0x10000>;
 +	reg-names = "gmac1_reg";
 +	interrupts = <GIC_SPI 15 IRQ_TYPE_LEVEL_HIGH>;
@@ -24,19 +55,19 @@
 +	pinctrl-names = "default";
 +	pinctrl-0 = <&rmii_pins>;
 +	phy-mode = "rmii";
-+	phy-handle = <&ephy1>;
++	phy-handle = <&ac300_ephy>;
 +	status = "okay";
 +};
 +
 +&mdio1 {
 +	compatible = "snps,dwmac-mdio";
 +
-+	ephy1: ethernet-phy@0 {
-+		compatible = "ethernet-phy-id0044.1400",
-+			     "allwinner,sun50i-h618-ac300-ephy",
++	ac300_ephy: ethernet-phy@0 {
++		compatible = "allwinner,sun50i-h618-ac300-ephy",
++			     "ethernet-phy-id0044.1400",
 +			     "ethernet-phy-ieee802.3-c22";
-+		reg = <0x0>;
-+		clocks = <&ccu CLK_EMAC_25M>;
-+		clock-names = "ephy";
++		reg = <0>;
++		clocks = <&ccu CLK_EMAC_25M>, <&ac300_pwm_clk>;
++		clock-names = "ephy", "pwm";
 +	};
 +};
