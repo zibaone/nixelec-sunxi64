@@ -127,6 +127,55 @@ Chargement au banc par UART + clé USB. Critère de succès : `ping` qui répond
 **P2 — intégration (0,5 j)** si P1 réussit : paquet module dans nixbian, nœud DT
 dans la carte, `extraConfig` (`CONFIG_AW_GMAC=m`), CI, commits séparés.
 
+### 7.1 Résultats P1 (mesurés le 2026-11-06, 1 h de time-box)
+
+**Le portage d'API est fait et il compile.** Les trois modules se construisent contre
+`linux-7.0.14` et se chargent au banc :
+
+| Module | Taille | vermagic |
+|---|---|---|
+| `sunxi-gmac.ko` | 1 037 888 o | `7.0.14 SMP preempt mod_unload aarch64` |
+| `sunxi-mdio.ko` | 484 424 o | idem |
+| `sunxi-ephy.ko` | 621 952 o | idem |
+
+Les écarts 6.1 → 7.0.14 réellement rencontrés, tous corrigés :
+
+- `strlcpy` → `strscpy` ;
+- `phy_loopback(dev, enable)` → `phy_loopback(dev, enable, speed)` ;
+- `#include <linux/vmalloc.h>` manquant ;
+- `platform_driver.remove` → `void` (gmac **et** mdio) ;
+- `LINUX_VERSION_CODE` n'est plus défini implicitement → `#include <linux/version.h>` ;
+- tracepoints du BSP neutralisés ; `sunxi-log.h` / `sunxi-sid.h` / `get_custom_mac_address`
+  remplacés par des shims.
+
+**`sunxi-mdio` fonctionne, et c'est un résultat réutilisable.** Posé sur les registres
+MDIO du MAC (`mdio@5030048`, 8 octets), il crée un bus MDIO opérationnel : le PHY
+AC300 y répond et le driver PHY lit sa calibration (`Read AC300 EPHY calibration:
+0x0506`). Autrement dit **le bloc MDIO du MAC est sain et adressable** — ce que le
+driver mainline utilise déjà, mais désormais prouvé côté vendor aussi.
+
+**`sunxi-gmac` probe mais ne tient pas.** Il crée `eth0` (MAC aléatoire, faute de
+`get_custom_mac_address`), puis :
+
+- **syscfg pointé sur `0x30`** (comme le nœud vendor de `gmac0`) : le PHY meurt —
+  toutes les lectures MDIO rendent `0xffff`, `phy_poll_reset failed: -110`.
+  Cause identifiée dans le code vendor : `sunxi_gmac_clk_disable()` fait
+  `writel(0, chip->syscfg_base)`, donc **efface tout le registre syscon**, bits
+  EPHY (horloge/sélection du PHY interne) compris ;
+- **syscfg pointé sur `0x34`** (le bon registre pour EMAC1) : la box part en
+  **hang dur**, sans aucune trace console, au chargement du module. Les masques du
+  vendor sont pourtant identiques aux nôtres (`RMII = 0x2000`, bits ETCS 1:0,
+  délais en 10/5, bit 15 = PHY interne).
+
+**Conclusion P1 : le driver radxa n'est pas transposable en l'état.** Le nœud DT de
+la box (`compatible`, `reg`, `status` seulement — pas de `phy-handle`, pas de
+`clocks`, pas d'`interrupts`, pas de `mdio`) montre que **ce n'est pas ce driver qui
+tourne sur cette carte** : leur Android embarque le driver longan, piloté par
+`sys_config.fex`. Porter le driver radxa revient à inventer son contrat DT sans
+référence, et la première tentative sérieuse tue le PHY ou la box.
+
+Le critère d'arrêt de la section 8 est atteint : **arrêt du portage**.
+
 ## 8. Critères d'arrêt
 
 - P0 positif → arrêt du portage, un correctif d'horloge suffit.
