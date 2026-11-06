@@ -76,7 +76,7 @@ diff -ruN a/shim/sunxi-trace-null.h b/shim/sunxi-trace-null.h
 +#endif
 diff -ruN a/sunxi-gmac.c b/sunxi-gmac.c
 --- a/sunxi-gmac.c	2026-11-06 22:14:34.371013162 +0100
-+++ b/sunxi-gmac.c	2026-11-06 22:08:37.755693786 +0100
++++ b/sunxi-gmac.c	2026-11-06 22:55:14.175010938 +0100
 @@ -38,6 +38,7 @@
  #include <linux/init.h>
  #include <linux/err.h>
@@ -96,7 +96,17 @@ diff -ruN a/sunxi-gmac.c b/sunxi-gmac.c
  
  #define SUNXI_GMAC_MODULE_VERSION	"2.5.17"
  
-@@ -249,10 +250,6 @@
+@@ -67,6 +68,9 @@
+ #define SUNXI_GMAC_HASH_TABLE_SIZE	64
+ #define SUNXI_GMAC_MAX_BUF_SZ		(SZ_2K - 1)
+ /* Under the premise that each descriptor currently transmits 2k data, jumbo frame max is 8100 */
++/* Le MAC compte le préambule dans la longueur mais ne le stocke pas. */
++#define SUNXI_GMAC_RX_PREAMBLE_LEN	7
++
+ #define SUNXI_GMAC_MAX_MTU_SZ		8100
+ 
+ /* SUNXI_GMAC_FRAME_FILTER  register value */
+@@ -249,10 +253,6 @@
  };
  #endif
  
@@ -107,7 +117,7 @@ diff -ruN a/sunxi-gmac.c b/sunxi-gmac.c
  static char mac_str[MAC_ADDR_LEN] = SUNXI_GMAC_MAC_ADDRESS;
  module_param_string(mac_str, mac_str, MAC_ADDR_LEN, S_IRUGO | S_IWUSR);
  MODULE_PARM_DESC(mac_str, "MAC Address String.(xx:xx:xx:xx:xx:xx)");
-@@ -531,6 +528,11 @@
+@@ -531,6 +531,11 @@
  	bool need_pinctrl;
  	struct pinctrl *pinctrl;
  	struct regulator *gmac_supply;
@@ -119,7 +129,7 @@ diff -ruN a/sunxi-gmac.c b/sunxi-gmac.c
  
  	/* definition spinlock */
  	spinlock_t universal_lock;		/* universal spinlock */
-@@ -1869,6 +1871,9 @@
+@@ -1869,6 +1874,9 @@
  	}
  
  	sunxi_gmac_init(chip->base, txmode, rxmode);
@@ -129,7 +139,7 @@ diff -ruN a/sunxi-gmac.c b/sunxi-gmac.c
  	sunxi_gmac_set_mac_addr_to_reg(chip->base, (unsigned char *)ndev->dev_addr, 0);
  
  	memset(chip->dma_tx, 0, sunxi_gmac_dma_desc_tx * sizeof(struct sunxi_gmac_dma_desc));
-@@ -2082,6 +2087,11 @@
+@@ -2082,6 +2090,11 @@
  		}
  	}
  
@@ -141,7 +151,7 @@ diff -ruN a/sunxi-gmac.c b/sunxi-gmac.c
  	clk_value = readl(chip->syscfg_base);
  	/* Only support RGMII/RMII/MII */
  	if (chip->phy_interface == PHY_INTERFACE_MODE_RGMII)
-@@ -2454,7 +2464,11 @@
+@@ -2454,7 +2467,11 @@
  			break;
  		}
  
@@ -154,7 +164,31 @@ diff -ruN a/sunxi-gmac.c b/sunxi-gmac.c
  			sunxi_err(chip->dev, "Get error pkt\n");
  			chip->ndev->stats.rx_errors++;
  			if (chip->rx_skb[entry]) {
-@@ -2824,7 +2838,7 @@
+@@ -2513,6 +2530,14 @@
+ 		if (likely(status != llc_snap))
+ 			frame_len -= ETH_FCS_LEN;
+ 
++		/*
++		 * Le MAC compte aussi le préambule (7 octets) dans la longueur du
++		 * descripteur, alors qu'il ne le stocke pas : sans ce retrait la pile
++		 * reçoit 7 octets de trop.
++		 */
++		if (likely(frame_len > SUNXI_GMAC_RX_PREAMBLE_LEN))
++			frame_len -= SUNXI_GMAC_RX_PREAMBLE_LEN;
++
+ 		trace_sunxi_gmac_skb_dump(chip->skb, chip->ndev->name, 0);
+ 
+ 		skb_put(chip->skb, frame_len);
+@@ -2533,7 +2558,7 @@
+ #endif
+ 
+ 		chip->skb->protocol = eth_type_trans(chip->skb, chip->ndev);
+-		chip->skb->ip_summed = CHECKSUM_UNNECESSARY;
++		chip->skb->ip_summed = CHECKSUM_NONE;
+ 
+ #ifdef PKT_DEBUG
+ 		printk("RX:\n");
+@@ -2824,7 +2849,7 @@
  static void sunxi_gmac_ethtool_getdrvinfo(struct net_device *ndev,
  					struct ethtool_drvinfo *info)
  {
@@ -163,7 +197,7 @@ diff -ruN a/sunxi-gmac.c b/sunxi-gmac.c
  
  	strcpy(info->version, SUNXI_GMAC_MODULE_VERSION);
  	info->fw_version[0] = '\0';
-@@ -3007,7 +3021,7 @@
+@@ -3007,7 +3032,7 @@
  		sunxi_gmac_loopback(chip->base, true);
  	} else {
  		*test_index = EXTERNAL_LOOPBACK_TEST;
@@ -172,7 +206,7 @@ diff -ruN a/sunxi-gmac.c b/sunxi-gmac.c
  		if (err)
  			goto out;
  	}
-@@ -3034,7 +3048,7 @@
+@@ -3034,7 +3059,7 @@
  	if (!(flags & ETH_TEST_FL_EXTERNAL_LB))
  		sunxi_gmac_loopback(chip->base, false);
  	else
@@ -181,7 +215,7 @@ diff -ruN a/sunxi-gmac.c b/sunxi-gmac.c
  
  	return err;
  }
-@@ -3502,6 +3516,9 @@
+@@ -3502,6 +3527,9 @@
  		return -EINVAL;
  	}
  
@@ -191,7 +225,7 @@ diff -ruN a/sunxi-gmac.c b/sunxi-gmac.c
  	ret = of_property_read_u32(np, "sunxi,phy-clk-type", &chip->phy_clk_type);
  	if (ret) {
  		sunxi_warn(&pdev->dev, "Get gmac phy-clk-type failed, use default OSC or pwm\n");
-@@ -3852,9 +3869,6 @@
+@@ -3852,9 +3880,6 @@
  		goto register_err;
  	}
  
@@ -201,7 +235,7 @@ diff -ruN a/sunxi-gmac.c b/sunxi-gmac.c
  	/* Before open the device, the mac address should be set */
  	sunxi_gmac_check_addr(ndev, mac_str);
  
-@@ -3902,7 +3916,7 @@
+@@ -3902,7 +3927,7 @@
  	return ret;
  }
  
@@ -210,7 +244,7 @@ diff -ruN a/sunxi-gmac.c b/sunxi-gmac.c
  {
  	struct net_device *ndev = platform_get_drvdata(pdev);
  	struct sunxi_gmac *chip = netdev_priv(ndev);
-@@ -3919,7 +3933,6 @@
+@@ -3919,7 +3944,6 @@
  	netif_napi_del(&chip->napi_tx);
  	sunxi_gmac_hardware_deinit(pdev);
  	sunxi_gmac_resource_put(pdev);

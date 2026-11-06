@@ -296,8 +296,50 @@ Vérifications faites avant commit : le patch s'applique à blanc sur les source
 vendorisées, la dérivation s'évalue (`sunxi-gmac-7.0.14`), le toplevel de la
 carte s'évalue, et le DTS produit par 0002 puis 0004 compile en DTB avec le
 `compatible` vendor, `phy-handle` sur le PHY du nœud MDIO et les deux propriétés.
-Le build complet (noyau + module) est laissé au CI aarch64 : localement il
-imposerait ~45 min d'émulation.
+Le build complet (noyau + module) a été fait par le CI aarch64 : le paquet est
+sorti et poussé sur le cache (`b18dppjjy…`, 81 Kio).
+
+### 7.5 Réserves — état après analyse
+
+Trois défauts distincts ont été isolés sur la carte, dont **deux corrigés** :
+
+| # | Défaut | État |
+|---|---|---|
+| A | `skb->ip_summed = CHECKSUM_UNNECESSARY` : le pilote annonce à la pile que le checksum est vérifié par le matériel alors qu'il ne l'est pas. Toutes les trames corrompues étaient donc acceptées silencieusement. | **corrigé** (`CHECKSUM_NONE`) |
+| B | Le MAC compte le préambule (7 octets) dans la longueur du descripteur tout en ne le stockant pas. `iputils` calcule le checksum ICMP sur la longueur reçue, pas sur la longueur IP, donc la longueur fausse suffisait à faire échouer tout `ping` émis depuis la carte. | **corrigé** (retrait de 7 octets après celui des 4 octets de FCS) |
+| C | **Corruption réelle de la charge utile en réception** : un trou d'une vingtaine d'octets au même endroit de la trame (juste après l'en-tête ICMP), comblé par des octets **d'une trame précédente**. L'en-tête IP et la fin de trame sont intacts, et le checksum IP est valide — seule la zone trouée est fausse. | **ouvert** |
+
+Le défaut C explique pourquoi le défaut A était « utile » : sans
+`CHECKSUM_UNNECESSARY`, la carte ne reçoit plus rien du tout, ce qui est la
+réponse honnête. Signature mesurée sur trois trames consécutives :
+
+```
+len=98 dst=7e04aa66219d src=349971def1db 0800 4500 0054 ...
+   ip_ok=True   icmp_cs recu=0x5858 calcule=0x1ad8   -> FAUX
+   charge utile : [timestamp 4 o][~23 o de rebut][10 11 12 ... 30]
+```
+
+Les octets de rebut contiennent des fragments de l'en-tête ICMP de la trame
+précédente (id/séquence), donc ce n'est pas une erreur de bit : **le DMA n'écrit
+pas cette zone**, qui garde le contenu de la trame précédente. Un trou qui
+commence sur une frontière de rafale DMA et qui laisse la suite de la trame
+intacte est la signature d'un **sous-remplissage du FIFO RX** (le MAC draine plus
+vite que le PHY ne fournit).
+
+Deux pistes restent à départager :
+
+1. **Le lien à 10 Mbps est le déclencheur** — le dongle du banc (`LPA 0xcc61`)
+   n'annonce que 10BASE-T et 100BASE-T4, jamais 100BASE-TX, donc le lien ne peut
+   pas monter à 100 Mbps. Test décisif : brancher la carte sur un port
+   100BASE-TX (le NIC intégré du PC ou le commutateur du LAN).
+2. **Configuration du FIFO/DMA RX** — `RX_CTL1` (vendor `0x4000000e`, mainline
+   `0`), seuil de store-and-forward et rafales DMA. Les écritures à chaud n'ont
+   rien changé, mais ce registre est peut-être verrouillé à l'initialisation :
+   le test propre demande un rechargement du module avec chaque variante.
+
+Tant que C n'est pas levé, l'intégration reste une **validation de laboratoire**
+et pas une configuration de production : ni DHCP, ni TCP entrant ne peuvent
+fonctionner sur une charge utile trouée.
 
 ## 8. Critères d'arrêt
 
