@@ -118,14 +118,15 @@ Sur le driver actuel, sélection 25M / 27M / 24M du CLKIN du PHY (`reg 0x00` bit
 (`carrier=1`) mais `rx_packets` reste à **0**. Le sélecteur d'horloge n'est donc pas
 la porte du RX ; cette piste est close.
 
-**P1 — module out-of-tree (0,5 à 1 j).**
-Les 4 fichiers vendor + shims, compilés en module externe contre l'arbre du noyau
-cible (`…-linux-7.0.14-dev/lib/modules/7.0.14/build`) selon la méthode de la skill
-`vendor-kernel-driver-port` (itération en secondes, pas de build noyau complet).
-Chargement au banc par UART + clé USB. Critère de succès : `ping` qui répond.
+**P1 — module out-of-tree (0,5 à 1 j).** ✅ **Réussi**, mais il a fallu quatre
+corrections successives : valeur du syscfg (`0x3fe1` et non `0x5bfe0`), MDIO
+vendor écarté, contrôle CRC coupé, préambule retiré de la longueur. Détail en
+7.2 et 7.3. Critère de succès atteint : `ping` PC → box 30/30, 0 % de perte,
+jusqu'à 1472 octets.
 
-**P2 — intégration (0,5 j)** si P1 réussit : paquet module dans nixbian, nœud DT
-dans la carte, `extraConfig` (`CONFIG_AW_GMAC=m`), CI, commits séparés.
+**P2 — intégration (0,5 j).** ✅ **Fait** (7.4) : paquet `packages/sunxi-gmac`,
+nœud DT 0004, `extraConfig`, ordre des modules, CI qui construit et pousse le
+module. Validé par le CI (paquet + noyau sortis et poussés au cache).
 
 ### 7.1 Résultats P1 (mesurés le 2026-11-06, 1 h de time-box)
 
@@ -446,11 +447,31 @@ Tant que C n'est pas levé, **l'Ethernet interne** reste une validation de
 laboratoire : ni DHCP ni TCP entrant ne peuvent fonctionner sur une charge utile
 trouée. La voie dongle décrite ci-dessus, elle, est utilisable.
 
+La suite du travail côté pilote — corrections restantes, dette technique,
+outillage, WiFi — est décrite dans `docs/chantiers-drivers-transpeed.md`. Le
+plus immédiat : le pilote annonce toujours `NETIF_F_RXCSUM` dans `hw_features`
+alors qu'il ne vérifie aucun checksum, donc le mensonge corrigé au niveau des
+skbs subsiste au niveau `netdev`.
+
 ## 8. Critères d'arrêt
 
-- P0 positif → arrêt du portage, un correctif d'horloge suffit.
-- P1 : module qui charge mais RX toujours nul → le blocage est matériel/strapping ;
-  le portage n'apportera rien, revenir à un adaptateur USB ou à un autre modèle de box.
+Ces critères avaient été posés **avant** les mesures. Ils sont conservés pour
+mémoire, avec leur verdict :
+
+- « P0 positif → arrêt du portage, un correctif d'horloge suffit. » → **P0
+  négatif** (sélecteur d'horloge PHY sans effet), le portage a suivi.
+- « P1 : module qui charge mais RX toujours nul → blocage matériel. » → **P1
+  positif** : le module a reçu des trames, mais il a fallu corriger la valeur du
+  syscfg, écarter le MDIO vendor, couper le contrôle CRC et retirer le
+  préambule de la longueur. Le « RX toujours nul » de l'époque venait de quatre
+  causes distinctes, toutes logicielles sauf la dernière.
+- Le critère qui s'est révélé juste est celui qui manquait : **le loopback
+  interne du MAC**. C'est lui qui a séparé le numérique (sain) de l'analogique
+  (défaillant) et qui a arrêté la poursuite du mauvais coupable.
+
+Le portage n'est donc pas arrêté : il est **livré**, avec une réserve
+matérielle documentée en 7.5 et 7.6, et une suite de chantiers dans
+`docs/chantiers-drivers-transpeed.md`.
 
 ## 9. Sources
 

@@ -69,11 +69,22 @@ in
       };
       script = ''
         umask 077
+        # Un PSK absent ne doit pas produire `psk=""` : wpa_supplicant sort
+        # alors en 255 et systemd le relance à l'infini (mesuré sur une carte
+        # HavenOS : 49 redémarrages, boucle qui masque la vraie panne). On
+        # échoue ici, bruyamment, et on retire un conf périmé pour que
+        # wpa-supplicant-* soit sauté proprement (ConditionPathExists).
+        psk=$(cat "${cfg.pskFile}" 2>/dev/null || true)
+        if [ -z "$psk" ]; then
+          rm -f /run/wpa_supplicant.conf
+          echo "wpa-psk: ${cfg.pskFile} absent ou vide — secrets non provisionnés (havenos provision)" >&2
+          exit 1
+        fi
         {
           printf 'ctrl_interface=DIR=/run/wpa_supplicant GROUP=wheel\n'
           printf 'network={\n'
           printf '\tssid="%s"\n' "${cfg.ssid}"
-          printf '\tpsk="%s"\n' "$(cat "${cfg.pskFile}")"
+          printf '\tpsk="%s"\n' "$psk"
           printf '}\n'
           ${cfg.extraNetworks}
         } > /run/wpa_supplicant.conf
@@ -91,6 +102,14 @@ in
           ];
           wants = [ "wpa-psk.service" ];
           before = [ "network.target" ];
+          # Sans conf rendue, wpa_supplicant sortirait en 255 et bouclerait :
+          # on saute l'unité (état « skipped », pas « failed »), et
+          # `havenos provision` la relance explicitement après le PSK.
+          unitConfig.ConditionPathExists = "/run/wpa_supplicant.conf";
+          # Filet de sécurité : conf présente mais wpa_supplicant qui refuse
+          # quand même de démarrer — 5 essais, puis on s'arrête.
+          startLimitIntervalSec = 300;
+          startLimitBurst = 5;
           serviceConfig = {
             Type = "simple";
             ExecStart = "${pkgs.wpa_supplicant}/sbin/wpa_supplicant -c /run/wpa_supplicant.conf -i ${cfg.interface}";
