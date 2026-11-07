@@ -361,6 +361,18 @@ câble/magnétiques. Par conséquent :
 
 Un câble neuf a été essayé : aucun changement, le lien reste à 10 Mbps.
 
+Les délais RMII ont ensuite été balayés **à l'initialisation** (paramètre de
+module `syscfg_override`, appliqué à chaque `ip link up`, donc sans reflasher) :
+`rx_delay` = 0, 8, 16, 24, 31 avec `tx_delay` = 7. Aucune valeur ne rétablit le
+trafic — la corruption ne dépend donc pas du phasage RMII.
+
+**Conclusion : la réserve C n'est pas logicielle.** Le numérique est prouvé sain
+(loopback), la calibration est correcte, la séquence PHYAFE est celle du vendor,
+les délais n'y changent rien et un câble neuf ne change rien. Ce qui reste est
+l'étage analogique du AC300 sur cette unité (ou son routage RMII/magnétiques),
+et il faudra soit une deuxième unité pour comparer, soit un partenaire
+100BASE-TX pour vérifier si le défaut est propre au 10 Mbps.
+
 Tant que C n'est pas levé, l'intégration reste une **validation de laboratoire**
 et pas une configuration de production : ni DHCP, ni TCP entrant ne peuvent
 fonctionner sur une charge utile trouée.
