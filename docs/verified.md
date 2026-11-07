@@ -48,6 +48,21 @@ That pin is one CI commit before `v0.4.0` and carries both sunxi audio patches
 | Estuary home menu | `addon_data/skin.estuary/settings.xml` + Kodi log | validated on the reference board on 2026-10-25: `music`, `weather`, `musicvideos`, `radio`, `pictures` and `games` hidden; feature in `3f69e84` |
 | CEC cold boot / TV standby | `cec-ctl -S`, Kodi CEC settings | validated on the reference board on 2026-10-25 (`hdmi-cec-reprobe`, `standby_pc_on_tv_standby=36028`). The same workaround now lives in `nixelec-kiosk` (`nixelec.kiosk.cec`); hotplug recovery is opt-in and not replayed with this image |
 
+## On the board (Transpeed 8K618-T)
+
+Measured on the bench on 2026-11-06/07, kernel `7.0.14` with patches 0001-0004.
+
+| Check | Command / observation | Status |
+|---|---|---|
+| Toplevel evaluation | `nix eval .#nixosConfigurations.transpeed-8k618-t.config.system.build.toplevel.drvPath` | verified 2026-11-06 |
+| `sunxi-gmac` package | CI job `cache` (aarch64): built and pushed as `b18dppjjy…-sunxi-gmac-7.0.14` | verified 2026-11-06 |
+| DTB (0002 + 0004) | `dtc -I dtb -O dts` on the built DTB | verified: `allwinner,sunxi-gmac`, `mdio@5030048`, `allwinner,syscfg-value`, `allwinner,no-crc-check` |
+| Internal Ethernet, link | `ip link`, `LPA` read through the vendor MDIO | **10 Mbps only**, and the PHY decodes the partner as 10BASE-T alone (`LPA 0x4461`) on a router port that advertises 10/100/1000 |
+| Internal Ethernet, traffic | `ping` both ways, 56/1000/1400/1472 bytes | PC → box: 30/30, 0 % loss. Box → PC: `+N corrupted` before the checksum fixes; with `CHECKSUM_NONE` nothing is received — the RX payload is corrupt |
+| Internal Ethernet, driver sanity | MAC internal loopback (`BASIC_CTL0 |= BIT(1)`) + `ping` on its own address | **3/3 received, checksums validated**: MAC, DMA, descriptors, ring and the driver RX path are sound. The defect is the AC300 PHY of this unit |
+| USB dongle (SR9700) | `enu1`, DHCP, `ssh` | validated 2026-11-07: `192.168.1.23/24` via DHCP, default route, ping 3/3 from the PC, TCP/22 open, 10 MB in 13.09 s (≈ 6.4 Mbps) |
+| WiFi (BCM4334) | `iw dev wlan0 scan` | **not usable**: kernel panic ~1.5 s after the radio starts (write to read-only memory, RCU stalls, `sunxi-wdt` reset), see `chantiers-drivers-transpeed.md` §10 |
+
 ## Sources
 
 - `nix-v4l2-request/docs/fenetrage-kodi-gbm.md`
