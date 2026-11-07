@@ -424,6 +424,24 @@ La MAC du dongle est fixe (`00:e0:4c:53:44:58`), contrairement à celle du MAC
 interne qui est tirée au hasard à chaque boot — un point en faveur du dongle
 pour une réservation DHCP.
 
+**Panne d'image trouvée au passage** : `CONFIG_MODULE_ALLOW_BTF_MISMATCH`
+n'était pas activé. Les modules de l'image sont produits par un outillage qui
+ne génère pas exactement le même BTF que le noyau, et le noyau refuse alors de
+les charger :
+
+```
+failed to validate module [usbnet] BTF: -22
+modprobe: ERROR: could not insert 'usbnet': Invalid argument
+```
+
+Conséquence mesurée : **aucun dongle USB-Ethernet ne pouvait fonctionner**,
+`usbnet` étant la dépendance de tous les pilotes concernés. L'ABI reste
+vérifiée par vermagic et par les versions de symboles ; BTF ne sert qu'à
+l'introspection BPF, donc autoriser le désaccord est sans risque. Corrigé dans
+`modules/boards/transpeed-8k618-t.nix`. En attendant le rebuild noyau, la box
+tourne avec `usbnet.ko`/`sr9700.ko` recompilés localement (sans section BTF,
+donc acceptés).
+
 Tant que C n'est pas levé, **l'Ethernet interne** reste une validation de
 laboratoire : ni DHCP ni TCP entrant ne peuvent fonctionner sur une charge utile
 trouée. La voie dongle décrite ci-dessus, elle, est utilisable.

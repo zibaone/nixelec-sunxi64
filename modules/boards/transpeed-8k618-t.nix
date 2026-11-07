@@ -51,6 +51,14 @@
     CONFIG_AW_GMAC_MDIO=m
     CONFIG_AW_EPHY=m
     CONFIG_DWMAC_SUN8I=m
+    # Les modules de l'image sont compiles par un outillage qui ne produit pas
+    # exactement le meme BTF que le noyau. Sans cette option le noyau refuse de
+    # les charger (`failed to validate module [X] BTF: -22` puis
+    # `could not insert 'X': Invalid argument`) : mesure sur `usbnet`, donc
+    # aucun dongle USB-Ethernet ne fonctionnait. L'ABI reste verifiee par
+    # vermagic et les versions de symboles ; BTF ne sert qu'a l'introspection
+    # BPF, l'autoriser est sans risque.
+    CONFIG_MODULE_ALLOW_BTF_MISMATCH=y
     # Le 24 MHz du PHY AC300 est fabriqué par le canal 5 du PWM : le PWM
     # mainline (`sun4i`) ne gère pas H616, c'est le driver vendor qui prend
     # le nœud. Sans lui, pas de `pwm-clock`, donc pas de REF_CLK RMII et le
