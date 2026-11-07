@@ -337,6 +337,30 @@ Deux pistes restent à départager :
    rien changé, mais ce registre est peut-être verrouillé à l'initialisation :
    le test propre demande un rechargement du module avec chaque variante.
 
+**Le loopback interne du MAC tranche entre les deux** et disculpe le pilote :
+
+```
+BASIC_CTL0 |= BIT(1)      # loopback interne, lien ignoré
+ping -c 3 10.99.99.2      -> 3 packets transmitted, 3 received, 0% loss
+```
+
+Ce test passe **avec `CHECKSUM_NONE`**, donc la pile valide réellement les
+checksums : le MAC, le DMA, les descripteurs, le ring et le chemin RX du pilote
+sont sains. La corruption ne peut venir que de l'interface RMII côté PHY ou du
+câble/magnétiques. Par conséquent :
+
+- le vendor du BSP ne fait rien de faux que nous n'ayons déjà corrigé ;
+- ni les délais RMII (balayés de 0 à 31, syscfg verrouillé à l'init, aucun
+  effet), ni la calibration AC300 (lue à `0x0506` dans les eFuses et appliquée),
+  ni la séquence PHYAFE (identique au vendor, branche « default » car
+  `caldata & BIT(9)` est nul) ne sont en cause ;
+- le lien reste à **10 Mbps sur le LAN aussi** : le port du routeur annonce
+  `LPA 0x4461`, soit 10BASE-T seul, exactement comme le dongle. Aucun partenaire
+  100BASE-TX n'étant disponible au banc, le chemin 100 Mbps n'a jamais été
+  exercé — c'est la variable non testée qui reste.
+
+Un câble neuf a été essayé : aucun changement, le lien reste à 10 Mbps.
+
 Tant que C n'est pas levé, l'intégration reste une **validation de laboratoire**
 et pas une configuration de production : ni DHCP, ni TCP entrant ne peuvent
 fonctionner sur une charge utile trouée.
