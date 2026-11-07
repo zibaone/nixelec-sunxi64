@@ -68,6 +68,12 @@
     "clk-pwm"
     "sunxi-mdio"
     "sunxi-gmac"
+    # Dongle USB-Ethernet de secours (CoreChip SR9700, 0fe6:9700). Le pruning
+    # des modules ne garde que ce qui est listé dans `boot.kernelModules`, donc
+    # sans ces trois lignes `sr9700.ko` disparaît de l'image.
+    "usbnet"
+    "mii"
+    "sr9700"
   ];
 
   # Broadcom BCM4334 (SDIO 0x02d0:0x4334, module AP6334). Le pilote est
