@@ -32,7 +32,11 @@
   # pilote Ethernet retenu est celui du vendor, hors arbre
   # (`packages/sunxi-gmac`). La variante mainline ne reçoit **aucune** trame
   # ici (MAC/DMA/ring prouvés sains par loopback, PHY configuré, `rx_packets`
-  # reste à 0), donc `CONFIG_DWMAC_SUN8I` est désactivé sur cette carte.
+  # reste à 0). On la garde néanmoins en module (`=m`) : la couche nixbian
+  # liste `dwmac-sun8i` dans `boot.kernelModules`, et le pruning d'images
+  # échoue sur un module absent. Elle ne se lie à rien — le nœud `emac1` porte
+  # `compatible = "allwinner,sunxi-gmac"` depuis le patch 0004, et `emac0`
+  # reste désactivé — donc elle charge et reste inerte.
   # Les .ko restent des modules : un rebuild noyau aarch64 coûte ~45 min,
   # contre ~2 min pour recompiler et transférer un module par UART.
   hardware.nixbian.extraPatches = [
@@ -46,7 +50,7 @@
     CONFIG_AW_GMAC=m
     CONFIG_AW_GMAC_MDIO=m
     CONFIG_AW_EPHY=m
-    CONFIG_DWMAC_SUN8I=n
+    CONFIG_DWMAC_SUN8I=m
     # Le 24 MHz du PHY AC300 est fabriqué par le canal 5 du PWM : le PWM
     # mainline (`sun4i`) ne gère pas H616, c'est le driver vendor qui prend
     # le nœud. Sans lui, pas de `pwm-clock`, donc pas de REF_CLK RMII et le
