@@ -373,6 +373,29 @@ l'étage analogique du AC300 sur cette unité (ou son routage RMII/magnétiques)
 et il faudra soit une deuxième unité pour comparer, soit un partenaire
 100BASE-TX pour vérifier si le défaut est propre au 10 Mbps.
 
+### 7.6 Le PHY de la carte est en cause (preuve croisée)
+
+Le même port de routeur, avec le même câble, a été confronté à un dongle
+RTL8153 :
+
+```
+dongle <-> routeur : Speed: 1000Mb/s  Duplex: Full  Link detected: yes
+                     Link partner advertised link modes: 10/100/1000
+box    <-> routeur : 10 Mbps, et son PHY lit LPA = 0x4461 (10BASE-T seul)
+```
+
+Trois faits en découlent :
+
+- le câble est bon — le gigabit exige les quatre paires, il les porte ;
+- le port du routeur est bon — il annonce 10/100/1000 ;
+- le PHY de la carte **décode mal les capacités de son partenaire** et, avec le
+  même étage analogique, **corrompt les données reçues**.
+
+La négociation à 10 Mbps et la charge utile trouée ont donc la même origine :
+le récepteur du AC300 sur cette unité, pas le pilote. Le portage est terminé
+côté logiciel ; la suite demande du matériel (deuxième unité pour comparer, ou
+retour SAV).
+
 Tant que C n'est pas levé, l'intégration reste une **validation de laboratoire**
 et pas une configuration de production : ni DHCP, ni TCP entrant ne peuvent
 fonctionner sur une charge utile trouée.
