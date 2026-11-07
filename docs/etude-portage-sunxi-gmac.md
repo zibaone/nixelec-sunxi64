@@ -396,9 +396,37 @@ le récepteur du AC300 sur cette unité, pas le pilote. Le portage est terminé
 côté logiciel ; la suite demande du matériel (deuxième unité pour comparer, ou
 retour SAV).
 
-Tant que C n'est pas levé, l'intégration reste une **validation de laboratoire**
-et pas une configuration de production : ni DHCP, ni TCP entrant ne peuvent
-fonctionner sur une charge utile trouée.
+### 7.7 Voie de secours validée : dongle USB-Ethernet
+
+En attendant, un dongle CoreChip SR9700 (`0fe6:9700`, « USB 2.0 10/100M »)
+donne à la carte un réseau propre, sans une ligne de code :
+
+```
+enu1  UP  192.168.1.23/24 via DHCP, default via 192.168.1.1
+PC -> box : ping 3/3 (0 %), TCP/22 ouvert, sshd répond
+débit     : 10 485 967 o en 13,09 s ≈ 0,80 Mo/s ≈ 6,4 Mbps
+```
+
+Le lien est à 10 Mbps et le SR9700 plafonne à ~7 Mbps en pratique : suffisant
+pour de l'IPTV SD/HD, pas pour de l'UHD. Le noyau expose aussi `r8152` (RTL8153
+gigabit) et les ASIX, donc un dongle gigabit est un simple remplacement.
+
+Deux points d'intégration, corrigés dans `modules/boards/transpeed-8k618-t.nix` :
+
+- `usbnet`, `mii` et `sr9700` ajoutés à `boot.kernelModules`, sans quoi le
+  pruning des modules retire `sr9700.ko` de l'image ;
+- `CONFIG_DWMAC_SUN8I` repassé de `n` à `m` : la couche nixbian liste
+  `dwmac-sun8i` dans `boot.kernelModules`, et le pruning échoue sur un module
+  absent. En module il charge et reste inerte (`emac1` porte le compatible
+  vendor depuis 0004, `emac0` est désactivé).
+
+La MAC du dongle est fixe (`00:e0:4c:53:44:58`), contrairement à celle du MAC
+interne qui est tirée au hasard à chaque boot — un point en faveur du dongle
+pour une réservation DHCP.
+
+Tant que C n'est pas levé, **l'Ethernet interne** reste une validation de
+laboratoire : ni DHCP ni TCP entrant ne peuvent fonctionner sur une charge utile
+trouée. La voie dongle décrite ci-dessus, elle, est utilisable.
 
 ## 8. Critères d'arrêt
 
