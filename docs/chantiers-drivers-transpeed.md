@@ -82,11 +82,12 @@ ces docs. Points vérifiés, et ce qu'ils changent ici :
 | HavenOS : lock nixelec à `4180a2f` (`299b95d`) | contient **tous** les correctifs Ethernet ; `61719e7` n'est qu'une remise à plat de provenance, code identique |
 | nixbian : `ebb7fe3b` (board transpeed dans les métadonnées), `c4fc0746` (boards locales, génération incrémentale), `152a5c67` (crust) | le DTB et la config du noyau viennent toujours de ces métadonnées générées ; ne pas les éditer à la main |
 
-**Contradiction à trancher au banc** : `examples/transpeed-base.nix` affirme que
-« l'ordre n'importe pas : le driver PHY diffère son probe tant que l'horloge
+**Contradiction à trancher au banc** : `examples/transpeed-base.nix` affirmait
+que « l'ordre n'importe pas : le driver PHY diffère son probe tant que l'horloge
 n'existe pas », alors que le module de carte note l'inverse (dans le désordre,
 le PHY tombe sur `genphy`). L'un des deux a été écrit avant une correction de
-l'autre. À re-mesurer avant d'écrire le `-EPROBE_DEFER` du chantier 3.
+l'autre ; le commentaire de l'exemple a été corrigé pour signaler les deux
+versions. À re-mesurer avant d'écrire le `-EPROBE_DEFER` du chantier 3.
 
 ## Vue d'ensemble
 
