@@ -20,6 +20,74 @@ reste à 10 Mbps avec `LPA 0x4461` alors qu'un dongle RTL8153 y monte à
 1000 Mb/s. C'est le récepteur du PHY AC300 de cette unité. Ne pas rouvrir ce
 dossier sans une deuxième unité ou une mesure au scope.
 
+## État au 2026-11-08 — chantier mis en standby
+
+Le portage Ethernet est **livré et utilisable par la voie dongle**, mais
+l'Ethernet interne de cette unité est défaillant. Le chantier est mis en pause
+ici ; tout le contexte nécessaire à la reprise est ci-dessous.
+
+**Fait et vérifié**
+
+- P2 intégré : paquet `packages/sunxi-gmac`, nœud DT 0004, `extraConfig`,
+  ordre des modules, CI qui construit et pousse le module (`9da603b`,
+  `444ac25`, run `42296083338` vert).
+- Deux vrais bugs du pilote vendor corrigés : `CHECKSUM_UNNECESSARY` (le
+  pilote validait des trames corrompues) et les 7 octets de préambule comptés
+  dans la longueur (`ceac46d`).
+- Corruption RX restante prouvée **matérielle** par loopback interne du MAC
+  (`fde3d8c`, `3cd3f37`) : MAC, DMA, descripteurs, ring et chemin RX du pilote
+  sont sains.
+- Voie de secours validée : dongle SR9700 (`enu1`, DHCP, SSH, ~6,4 Mbps),
+  modules `usbnet`/`mii`/`sr9700` gardés dans l'image et
+  `CONFIG_MODULE_ALLOW_BTF_MISMATCH=y` (`197bfae`, `b5c24aa`, `3f3e399`).
+- Provenance du paquet assainie : `src/` porte l'arbre réellement compilé, la
+  dérivation n'applique plus de patch (`61719e7`) — désassemblage aarch64
+  identique, seul le `.drv` change, **donc le cache CI doit être re-rempli**.
+- Docs : ce fichier, `etude-portage-sunxi-gmac.md`, `verified.md`, backlog.
+
+**Bloqué**
+
+- Ethernet interne : PHY AC300 de cette unité. Il faut une **deuxième unité**
+  (H96 Max H618 ou autre Transpeed) pour séparer panne d'unité et défaut de
+  conception. Aucun travail logiciel ne peut lever ce doute.
+- Banc hors ligne depuis le 2026-11-08 : la box ne répond plus sur
+  `192.168.1.23` (dongle débranché ou box éteinte).
+
+**Pour reprendre**
+
+1. Rebrancher le banc : dongle SR9700 **présent au boot** (coupure
+   d'alimentation, pas un reboot à chaud — `dhcpcd` démarre avant
+   l'énumération USB), UART CH340 sur `/dev/ttyUSB0` en secours.
+2. Vérifier que la configuration évalue encore : `nix eval --raw
+   .#nixosConfigurations.transpeed-8k618-t.config.system.build.toplevel.drvPath`
+   (3 s le 2026-11-08, après les évolutions des couches partagées).
+3. Recompiler le module contre `kernel.dev` (`linux-7.0.14-dev`), `strip
+   --strip-debug`, transférer par SSH, `rmmod`/`insmod`, mesurer.
+4. Attaquer les chantiers 1 à 3 (voir le plan
+   `.hermes/plans/2026-11-08_115500-suite-chantiers-drivers-transpeed.md`).
+5. Construire l'image HavenOS avec `--override-input nixelec` si le lock n'a
+   pas suivi.
+
+## Dérive des couches partagées (vérifiée le 2026-11-08)
+
+Les couches communes avec la Zero 3 ont évolué après la rédaction initiale de
+ces docs. Points vérifiés, et ce qu'ils changent ici :
+
+| Évolution | Effet sur le Transpeed |
+|---|---|
+| `4219ece` — firmware BCM4334, NVRAM et `wireless-regdb` déplacés dans `modules/boards/transpeed-8k618-t.nix` ; `wlan0` figé par `systemd.network.links` | la mesure de panique WiFi (§10) est **antérieure** à ce durcissement, à rejouer |
+| Famille `sunxi64` : `brcmfmac` + `brcmfmac-wcc` listés quand `nixelec.wifiHardware == "brcmfmac"` | le sous-module `brcmfmac-wcc` est indispensable (`brcm_fwvid_request_module: mod=wcc: failed 256`) |
+| Famille `sunxi64` : `hardware.firmwareCompression = "none"` | sans ça le firmware part en `.zst` et n'est jamais chargé (ce noyau n'a pas `CONFIG_FW_LOADER_COMPRESS`) |
+| Famille `sunxi64` : `boot.kernelModules` = HDMI audio, `sun8i_ce`, `zram` (+ brcmfmac) — **pas** `dwmac-sun8i` | le chantier 6 était mal attribué, corrigé ci-dessous |
+| HavenOS : lock nixelec à `4180a2f` (`299b95d`) | contient **tous** les correctifs Ethernet ; `61719e7` n'est qu'une remise à plat de provenance, code identique |
+| nixbian : `ebb7fe3b` (board transpeed dans les métadonnées), `c4fc0746` (boards locales, génération incrémentale), `152a5c67` (crust) | le DTB et la config du noyau viennent toujours de ces métadonnées générées ; ne pas les éditer à la main |
+
+**Contradiction à trancher au banc** : `examples/transpeed-base.nix` affirme que
+« l'ordre n'importe pas : le driver PHY diffère son probe tant que l'horloge
+n'existe pas », alors que le module de carte note l'inverse (dans le désordre,
+le PHY tombe sur `genphy`). L'un des deux a été écrit avant une correction de
+l'autre. À re-mesurer avant d'écrire le `-EPROBE_DEFER` du chantier 3.
+
 ## Vue d'ensemble
 
 | # | Chantier | Type | Coût | Bloqué par |
@@ -29,7 +97,7 @@ dossier sans une deuxième unité ou une mesure au scope.
 | 3 | `-EPROBE_DEFER` au lieu de l'ordre de chargement | robustesse | 1–2 h | — |
 | 4 | `sunxi-mdio` qui lit `phy_id = 0` | dette | 2–3 h | — |
 | 5 | `dwmac-sun8i` en `=n` propre | propreté | 30 min | #6 |
-| 6 | `dwmac-sun8i` dans `boot.kernelModules` (nixbian) | bug latent | 1 h | — |
+| 6 | `dwmac-sun8i` dans `boot.kernelModules` (exemple) | propreté | 15 min | — |
 | 7 | Cause racine du désaccord BTF (nixbian) | bug latent | à cadrer | — |
 | 8 | `CONFIG_KEXEC` absent | capacité | 30 min + 1 rebuild | — |
 | 9 | Loopback MAC en test scripté | outillage | 1 h | — |
@@ -42,7 +110,7 @@ dossier sans une deuxième unité ou une mesure au scope.
 **Symptôme** : `ethtool -k eth0` annoncera `rx-checksumming: on` alors que le
 MAC ne vérifie aucun checksum.
 
-**Preuve** : `hw_features` inclut `NETIF_F_RXCSUM` (≈ ligne 3824), et le même
+**Preuve** : `hw_features` inclut `NETIF_F_RXCSUM` (≈ ligne 3853), et le même
 pilote posait `skb->ip_summed = CHECKSUM_UNNECESSARY` sur chaque trame, ce qui
 déjà masquait toutes les corruptions. Ce dernier point est corrigé
 (`CHECKSUM_NONE`), mais le drapeau `netdev` reste : les chemins qui s'y fient
@@ -61,7 +129,7 @@ reçoit les trames de la carte avec des checksums valides.
 réservation DHCP, pas de suivi, adresse différente à chaque redémarrage.
 
 **Preuve** : le pilote appelle déjà `of_get_ethdev_address(np, ndev)`
-(≈ ligne 3537) : si le DT porte `mac-address`, elle est utilisée. Sans
+(≈ ligne 3563) : si le DT porte `mac-address`, elle est utilisée. Sans
 propriété, le noyau en tire une au hasard.
 
 **Correction** : deux options, dans cet ordre de préférence.
@@ -84,7 +152,7 @@ décroche plus. D'où l'ordre imposé `pwm-sunxi-enhance` → `clk-pwm` →
 `sunxi-mdio` → `sunxi-gmac` dans `boot.kernelModules`.
 
 **Preuve** : `chip->ephy_clk = devm_clk_get(&pdev->dev, "phy25m")` (≈ ligne
-3317) fait `if (IS_ERR(...)) chip->ephy_clk = NULL;` — l'erreur est **avalée**.
+3342) fait `if (IS_ERR(...)) chip->ephy_clk = NULL;` — l'erreur est **avalée**.
 Or `devm_clk_get` renvoie `-EPROBE_DEFER` quand le provider n'est pas encore
 enregistré : c'est précisément le signal à propager pour que le driver soit
 reprobe plus tard, au lieu de démarrer sans horloge.
@@ -126,28 +194,32 @@ l'état du lien.
 
 ## 5. `dwmac-sun8i` en `=n` propre
 
-**État actuel** : `CONFIG_DWMAC_SUN8I=m` **uniquement** pour satisfaire le
-pruning, qui échoue sur un module listé dans `boot.kernelModules` mais absent.
-Le module charge et ne se lie à rien (`emac1` porte
-`compatible = "allwinner,sunxi-gmac"` depuis le patch 0004, `emac0` est
-désactivé), donc c'est inoffensif — mais c'est un contournement qui masque le
-vrai bug.
+**État actuel** : `CONFIG_DWMAC_SUN8I=m` par précaution contre le pruning, qui
+échoue sur un module listé dans `boot.kernelModules` mais absent. **Vérifié le
+2026-11-08** : le module de carte ne liste pas ce module ; seul
+`examples/transpeed-base.nix` le fait. Le module charge et ne se lie à rien
+(`emac1` porte `compatible = "allwinner,sunxi-gmac"` depuis le patch 0004,
+`emac0` est désactivé), donc c'est inoffensif — mais `=n` suffirait pour
+l'image de la carte.
 
-**Correction** : une fois #6 réglé côté nixbian, repasser à `=n` et retirer
-`dwmac-sun8i` de la liste des modules.
+**Correction** : passer à `=n` dans `modules/boards/transpeed-8k618-t.nix`, et
+retirer `dwmac-sun8i` de la liste de l'exemple (ou l'y laisser avec `=m` si
+l'exemple doit rester autonome).
 
-## 6. `dwmac-sun8i` dans `boot.kernelModules` (nixbian)
+## 6. `dwmac-sun8i` listé dans un `boot.kernelModules` (exemple, pas nixbian)
 
-**Symptôme** : la couche nixbian liste `dwmac-sun8i` dans `boot.kernelModules`
-pour toutes les cartes sunxi64. Toute carte qui compile ce pilote en `=n` casse
-le pruning d'image (`module not found`).
+**Correction du 2026-11-08** : ce chantier était mal attribué. La couche
+nixbian **ne liste pas** ce module (vérifié : `grep '"dwmac-sun8i"'` ne rend que
+`examples/transpeed-base.nix`). La famille `sunxi64` liste `dw-hdmi-i2s-audio`,
+`snd-soc-hdmi-codec`, `sun8i_ce`, `zram`, et `brcmfmac`/`brcmfmac-wcc` quand
+`nixelec.wifiHardware == "brcmfmac"`.
 
-**Correction** : côté `nixbian`, ne lister `dwmac-sun8i` que si
-`CONFIG_DWMAC_SUN8I` n'est pas `n` — ou le sortir de la liste et le laisser
-être chargé par le `compatible` du DT (`MODALIAS`).
+Le risque reste réel mais il est **local à l'exemple** : une configuration qui
+liste `dwmac-sun8i` tout en compilant le pilote en `=n` casse le pruning
+(`module not found`). Ce n'est pas un bug de la couche partagée.
 
-**Vérification** : construire l'image d'une carte avec `DWMAC_SUN8I=n` ; elle
-doit passer le pruning.
+**Correction** : dans l'exemple, soit garder `=m`, soit retirer l'entrée et
+laisser le `compatible` du DT charger le module (`MODALIAS`).
 
 ## 7. Cause racine du désaccord BTF (nixbian)
 
@@ -167,9 +239,17 @@ vermagic et les versions de symboles, BTF ne sert qu'à l'introspection BPF),
 mais ça **masque** le problème : les modules de l'image ne sont pas produits
 par le même outillage que le noyau.
 
-**Correction** : côté nixbian, aligner l'outillage de compilation des modules
-sur celui du noyau (même `pahole`, même GCC). Sinon chaque bump de noyau
-ramènera la panne, et chaque carte devra porter l'option.
+**Hypothèse à confirmer** : les modules de l'image ne seraient pas produits par
+le même outillage que le noyau (même `pahole`, même GCC). Ce n'est **pas
+démontré** — la vérification consiste à comparer la version de `pahole` et de
+GCC utilisée pour le noyau et pour les modules de l'image (`nix log` du noyau
+et de la dérivation des modules). Si l'hypothèse est fausse, la cause est
+ailleurs (par exemple une section `.BTF` générée à partir de sources
+différentes) et `ALLOW_BTF_MISMATCH` restera nécessaire.
+
+**Correction** : si l'hypothèse se vérifie, aligner l'outillage côté nixbian.
+Sinon chaque bump de noyau ramènera la panne, et chaque carte devra porter
+l'option.
 
 ## 8. `CONFIG_KEXEC` absent
 
@@ -207,6 +287,15 @@ suffit), panique noyau : écriture en mémoire read-only à
 idle task!`. Stalls RCU `Possible timer handling issue on cpu=2`, watchdog
 `sunxi-wdt` 16 s.
 
+**Attention, mesure antérieure au durcissement.** La panique a été observée
+avant `4219ece` (2026-11-08), qui a fait entrer le firmware dans le module de
+carte : `brcmfmac4334-sdio.bin` + NVRAM + `wireless-regdb`, `wlan0` figé par
+`systemd.network.links` (sans quoi systemd renomme l'interface en `wld1`),
+`brcmfmac-wcc` listé par la famille, et `hardware.firmwareCompression = "none"`
+(ce noyau n'a pas `CONFIG_FW_LOADER_COMPRESS`, donc un firmware `.zst` n'était
+jamais chargé). **Rejouer le test avant d'ouvrir le dossier** : il est possible
+que la panique ait eu une cause de chargement de firmware.
+
 **Ce qui est établi** : le firmware et la NVRAM sont les bons (BCM4334, NVRAM
 extraite du dump Android, MAC issue de l'OTP) ; le module se charge et
 l'interface monte. La panique survient au début du trafic radio, pas au probe.
@@ -225,6 +314,30 @@ l'interface monte. La panique survient au début du trafic radio, pas au probe.
 traiter comme un chantier à part, pas comme une finition du portage Ethernet.
 
 ---
+
+## Vérifier une image Transpeed
+
+Une image qui se construit ne prouve pas qu'elle embarque les bons modules : le
+pruning en retire 1707 sur 2643. `kernel-modules` est un **symlink** — un `find`
+sans `-L` renvoie faussement « absent ».
+
+```bash
+SYS=$(ls -dt /nix/store/*nixos-system-*transpeed-8k618-t* | head -1)
+M=$(readlink -f $SYS/kernel-modules)
+```
+
+| Élément | Attendu |
+|---|---|
+| `$M/…/net/usb/sr9700.ko` et `usbnet.ko` | présents (dongle de secours) |
+| `$M/…/pwm/pwm-sunxi-enhance.ko` | présent (24 MHz du PHY) |
+| `find -L $SYS/kernel-modules -path '*extra*' -name '*.ko'` | `sunxi-gmac.ko`, `sunxi-mdio.ko` (hors arbre) |
+| `$SYS/etc/modules-load.d/*.conf` | `pwm-sunxi-enhance`, `clk-pwm`, `sunxi-mdio`, `sunxi-gmac`, `usbnet`, `mii`, `sr9700` |
+| config du noyau | `CONFIG_MODULE_ALLOW_BTF_MISMATCH=y`, `CONFIG_AC300_PHY=y`, `CONFIG_DWMAC_SUN8I=m` |
+| DTB | `sun50i-h618-transpeed-8k618-t.dtb` porte `allwinner,sunxi-gmac`, `allwinner,syscfg-value`, `mdio@5030048` |
+| firmware | `$SYS/firmware/brcm/brcmfmac4334-sdio.bin` + `.txt`, `regulatory.db` **non compressés** |
+
+Trouver la config du noyau : `nix-store -q --deriver $(readlink -f $SYS/kernel)`
+puis, dans les références du `.drv`, la `*.config`.
 
 ## Décision matérielle en attente
 

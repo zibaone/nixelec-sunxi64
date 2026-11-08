@@ -61,7 +61,8 @@ Measured on the bench on 2026-11-06/07, kernel `7.0.14` with patches 0001-0004.
 | Internal Ethernet, traffic | `ping` both ways, 56/1000/1400/1472 bytes | PC → box: 30/30, 0 % loss. Box → PC: `+N corrupted` before the checksum fixes; with `CHECKSUM_NONE` nothing is received — the RX payload is corrupt |
 | Internal Ethernet, driver sanity | MAC internal loopback (`BASIC_CTL0 |= BIT(1)`) + `ping` on its own address | **3/3 received, checksums validated**: MAC, DMA, descriptors, ring and the driver RX path are sound. The defect is the AC300 PHY of this unit |
 | USB dongle (SR9700) | `enu1`, DHCP, `ssh` | validated 2026-11-07: `192.168.1.23/24` via DHCP, default route, ping 3/3 from the PC, TCP/22 open, 10 MB in 13.09 s (≈ 6.4 Mbps) |
-| WiFi (BCM4334) | `iw dev wlan0 scan` | **not usable**: kernel panic ~1.5 s after the radio starts (write to read-only memory, RCU stalls, `sunxi-wdt` reset), see `chantiers-drivers-transpeed.md` §10 |
+| WiFi (BCM4334) | `iw dev wlan0 scan` | **not usable as measured**: kernel panic ~1.5 s after the radio starts (write to read-only memory, RCU stalls, `sunxi-wdt` reset), see `chantiers-drivers-transpeed.md` §10. **This predates `4219ece`** (firmware, NVRAM, `wireless-regdb`, stable `wlan0`, `brcmfmac-wcc`, `firmwareCompression = "none"`): replay before investigating |
+| Toplevel after shared-layer evolutions | `nix eval --raw .#nixosConfigurations.transpeed-8k618-t.config.system.build.toplevel.drvPath` | verified 2026-11-08: evaluates in 3 s against the current nixelec family layer and nixbian metadata |
 
 ## Sources
 

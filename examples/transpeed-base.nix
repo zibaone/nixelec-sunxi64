@@ -81,8 +81,11 @@
   # reproduit la panique brcmfmac sans poser de secret sur la console UART).
   # Chaine Ethernet : le PWM vendor fabrique le 24 MHz du PHY AC300 (via
   # `pwm-clock`), donc ces modules doivent être présents dans la fermeture —
-  # nixbian élague tout module non référencé. L'ordre n'importe pas : le
-  # driver PHY diffère son probe tant que l'horloge n'existe pas.
+  # nixbian élague tout module non référencé. L'ordre est conservé par
+  # précaution : une mesure du 2026-11-06 voit le PHY tomber sur `genphy` quand
+  # l'horloge n'existe pas encore, alors que ce commentaire affirmait le
+  # contraire. Contradiction non tranchée — à rejouer au banc avant de compter
+  # sur l'un ou l'autre.
   boot.kernelModules = [
     "pwm-sunxi-enhance"
     "clk-pwm"

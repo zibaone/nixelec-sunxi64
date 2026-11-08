@@ -18,7 +18,7 @@ session or two, `L` more.
 | **P2/S** | 51, 52 (RX checksum flag, stable MAC on the Transpeed) | the driver still advertises a verification it does not perform, and a random MAC per boot defeats any DHCP reservation |
 | **P2/M** | 53 (defer instead of load order), 56 (BTF root cause, nixbian) | both turn a working port into a robust one, and both are latent for other boards |
 | **P2/L** | 58 (`brcmfmac` panic) | the real blocker for a kiosk without a cable |
-| **P3** | 3, 4, 10 (replay on the image + public audio doc), 12, 16, 17, 19, 21, 42 (`CONFIG_PSI`, costs a kernel), 44 (`mmc -110` / CMD0, optional), 45 (add-on icons), 46 (CEC kernel fix), 47 (WirePlumber abort: retest on 26.11, nothing to port), 54 (`sunxi-mdio` reads PHY ID 0), 55 (`dwmac-sun8i` in `boot.kernelModules`, nixbian), 57 (`CONFIG_KEXEC`), 59 (Transpeed PHY, blocked on a second unit), public diagnostics | deferred, or knowledge rather than code |
+| **P3** | 3, 4, 10 (replay on the image + public audio doc), 12, 16, 17, 19, 21, 42 (`CONFIG_PSI`, costs a kernel), 44 (`mmc -110` / CMD0, optional), 45 (add-on icons), 46 (CEC kernel fix), 47 (WirePlumber abort: retest on 26.11, nothing to port), 54 (`sunxi-mdio` reads PHY ID 0), 55 (`dwmac-sun8i` in the example's `boot.kernelModules`), 57 (`CONFIG_KEXEC`), 59 (Transpeed PHY, blocked on a second unit), public diagnostics | deferred, or knowledge rather than code |
 | **closed** | 6, 9, 11, 23, 26, 30, 31, 33, 34, 37, 38, 39, 43 (governor), 46 (layer workaround), 48 (watchdog), 50 (kiosk console), D1 | done |
 
 ## In scope
@@ -61,10 +61,10 @@ session or two, `L` more.
 | 52 | Random MAC per boot on the Transpeed | `of_get_ethdev_address()` already reads `mac-address` from the DT but the board DTS has none, so the kernel invents one and no DHCP reservation survives a reboot | add `mac-address` to the board DTS, or read it from the SID through `nvmem` |
 | 53 | Module load order instead of probe deferral | `devm_clk_get("phy25m")` swallows `-EPROBE_DEFER` and stores `NULL`, so a late PWM provider leaves the PHY on `genphy`; the order is currently worked around in `boot.kernelModules` | propagate the defer with `dev_err_probe` |
 | 54 | `sunxi-mdio` reads PHY ID 0 | measured: the vendor MDIO returns 0 while a direct `/dev/mem` read returns `BMCR=0x3100`, `BMSR=0x79ed`; the PHY only attaches because the DT carries `phy-handle` | debug the vendor sequence (MDC clock presumably not ready at probe) or drop the module for the mainline bus |
-| 55 | `dwmac-sun8i` listed in `boot.kernelModules` (nixbian) | the family layer lists it for every sunxi64 board, so any board compiling it `=n` breaks the image pruning; worked around per board with `=m` | list it only when the config enables it |
+| 55 | `dwmac-sun8i` listed in a `boot.kernelModules` | **mis-attributed, corrected 2026-11-08**: the nixbian layer does *not* list it — only `examples/transpeed-base.nix` does. The pruning hazard is real but local to the example, not shared by the family | drop the entry from the example, or keep `CONFIG_DWMAC_SUN8I=m` there |
 | 56 | BTF mismatch between the kernel and its own modules (nixbian) | measured: `failed to validate module [usbnet] BTF: -22`, so no USB-Ethernet driver could load; `CONFIG_MODULE_ALLOW_BTF_MISMATCH=y` masks the symptom | align the module toolchain on the kernel's |
 | 57 | `CONFIG_KEXEC` absent | blocks kexec deployments | enable it in `extraConfig` |
-| 58 | `brcmfmac` panic when the radio starts | measured ~1.5 s after `wlan0` comes up: kernel write to read-only memory, RCU stalls, `sunxi-wdt` reset | see `chantiers-drivers-transpeed.md` §10 |
+| 58 | `brcmfmac` panic when the radio starts | measured ~1.5 s after `wlan0` comes up: kernel write to read-only memory, RCU stalls, `sunxi-wdt` reset. **Measured before `4219ece`** (firmware/NVRAM/regdb into the board module, stable `wlan0`, `brcmfmac-wcc`, uncompressed firmware) | replay first, then see `chantiers-drivers-transpeed.md` §10 |
 | 59 | Transpeed internal PHY (AC300) defective | decodes autonegotiation wrong (`LPA 0x4461` on a port that advertises 10/100/1000) and corrupts the RX payload; MAC, DMA and the driver RX path are proven sane by internal loopback | needs a second unit to separate unit fault from design |
 
 ## Public add-ons example
