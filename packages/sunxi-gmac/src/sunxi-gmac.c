@@ -38,6 +38,7 @@
 #include <linux/init.h>
 #include <linux/err.h>
 #include <linux/scatterlist.h>
+#include <linux/vmalloc.h>
 #include <linux/regulator/consumer.h>
 #include <linux/of_net.h>
 #include <linux/of_mdio.h>
@@ -54,8 +55,8 @@
  * must be included exactly once across the whole kernel with
  * CREATE_TRACE_POINTS defined
  */
-#define CREATE_TRACE_POINTS
-#include "sunxi-gmac-trace.h"
+/* Tracepoints du BSP neutralises : shim no-op (voir shim/sunxi-trace-null.h). */
+#include <sunxi-trace-null.h>
 
 #define SUNXI_GMAC_MODULE_VERSION	"2.5.17"
 
@@ -67,6 +68,9 @@
 #define SUNXI_GMAC_HASH_TABLE_SIZE	64
 #define SUNXI_GMAC_MAX_BUF_SZ		(SZ_2K - 1)
 /* Under the premise that each descriptor currently transmits 2k data, jumbo frame max is 8100 */
+/* Le MAC compte le préambule dans la longueur mais ne le stocke pas. */
+#define SUNXI_GMAC_RX_PREAMBLE_LEN	7
+
 #define SUNXI_GMAC_MAX_MTU_SZ		8100
 
 /* SUNXI_GMAC_FRAME_FILTER  register value */
@@ -247,10 +251,6 @@ static char sunxi_gmac_test_strings[][ETH_GSTRING_LEN] = {
 	"Internal lb test (mac loopback)",
 	"External lb test (phy loopback)",
 };
-#endif
-
-#ifdef MODULE
-extern int get_custom_mac_address(int fmt, char *name, char *addr);
 #endif
 
 static char mac_str[MAC_ADDR_LEN] = SUNXI_GMAC_MAC_ADDRESS;
@@ -531,6 +531,11 @@ struct sunxi_gmac {
 	bool need_pinctrl;
 	struct pinctrl *pinctrl;
 	struct regulator *gmac_supply;
+	/* Carte : valeur de sysconf imposee par le DT (0 = logique du BSP). */
+	u32 syscfg_val;
+	/* Carte : le MAC compte 7 octets de preambule dans la longueur, le CRC
+	 * de chaque trame est donc faux -> controle CRC desactive. */
+	bool no_crc_check;
 
 	/* definition spinlock */
 	spinlock_t universal_lock;		/* universal spinlock */
@@ -1869,6 +1874,9 @@ static int sunxi_gmac_open(struct net_device *ndev)
 	}
 
 	sunxi_gmac_init(chip->base, txmode, rxmode);
+
+	if (chip->no_crc_check)
+		sunxi_gmac_crc(chip->base, false);
 	sunxi_gmac_set_mac_addr_to_reg(chip->base, (unsigned char *)ndev->dev_addr, 0);
 
 	memset(chip->dma_tx, 0, sunxi_gmac_dma_desc_tx * sizeof(struct sunxi_gmac_dma_desc));
@@ -2080,6 +2088,11 @@ static int sunxi_gmac_clk_enable(struct sunxi_gmac *chip)
 			sunxi_err(chip->dev, "Try to enable phy25m_clk failed\n");
 			goto phy25m_clk_err;
 		}
+	}
+
+	if (chip->syscfg_val) {
+		writel(chip->syscfg_val, chip->syscfg_base);
+		return 0;
 	}
 
 	clk_value = readl(chip->syscfg_base);
@@ -2454,7 +2467,11 @@ static int sunxi_gmac_rx(struct sunxi_gmac *chip, int limit)
 			break;
 		}
 
-		if (status == discard_frame || frame_len > SUNXI_GMAC_MAX_MTU_SZ) {
+		if ((chip->no_crc_check ?
+		     (desc->desc0.rx.len_err || desc->desc0.rx.over_err ||
+		      desc->desc0.rx.mii_err || desc->desc0.rx.desc_err) :
+		     (status == discard_frame)) ||
+		    frame_len > SUNXI_GMAC_MAX_MTU_SZ) {
 			sunxi_err(chip->dev, "Get error pkt\n");
 			chip->ndev->stats.rx_errors++;
 			if (chip->rx_skb[entry]) {
@@ -2513,6 +2530,14 @@ static int sunxi_gmac_rx(struct sunxi_gmac *chip, int limit)
 		if (likely(status != llc_snap))
 			frame_len -= ETH_FCS_LEN;
 
+		/*
+		 * Le MAC compte aussi le préambule (7 octets) dans la longueur du
+		 * descripteur, alors qu'il ne le stocke pas : sans ce retrait la pile
+		 * reçoit 7 octets de trop.
+		 */
+		if (likely(frame_len > SUNXI_GMAC_RX_PREAMBLE_LEN))
+			frame_len -= SUNXI_GMAC_RX_PREAMBLE_LEN;
+
 		trace_sunxi_gmac_skb_dump(chip->skb, chip->ndev->name, 0);
 
 		skb_put(chip->skb, frame_len);
@@ -2533,7 +2558,7 @@ static int sunxi_gmac_rx(struct sunxi_gmac *chip, int limit)
 #endif
 
 		chip->skb->protocol = eth_type_trans(chip->skb, chip->ndev);
-		chip->skb->ip_summed = CHECKSUM_UNNECESSARY;
+		chip->skb->ip_summed = CHECKSUM_NONE;
 
 #ifdef PKT_DEBUG
 		printk("RX:\n");
@@ -2824,7 +2849,7 @@ static int sunxi_gmac_ethtool_get_sset_count(struct net_device *netdev, int sset
 static void sunxi_gmac_ethtool_getdrvinfo(struct net_device *ndev,
 					struct ethtool_drvinfo *info)
 {
-	strlcpy(info->driver, "sunxi_gmac", sizeof(info->driver));
+	strscpy(info->driver, "sunxi_gmac", sizeof(info->driver));
 
 	strcpy(info->version, SUNXI_GMAC_MODULE_VERSION);
 	info->fw_version[0] = '\0';
@@ -3007,7 +3032,7 @@ static int sunxi_gmac_loopback_test(struct net_device *ndev, u32 flags,
 		sunxi_gmac_loopback(chip->base, true);
 	} else {
 		*test_index = EXTERNAL_LOOPBACK_TEST;
-		err |= phy_loopback(ndev->phydev, true);
+		err |= phy_loopback(ndev->phydev, true, ndev->phydev->speed);
 		if (err)
 			goto out;
 	}
@@ -3034,7 +3059,7 @@ out:
 	if (!(flags & ETH_TEST_FL_EXTERNAL_LB))
 		sunxi_gmac_loopback(chip->base, false);
 	else
-		err |= phy_loopback(ndev->phydev, false);
+		err |= phy_loopback(ndev->phydev, false, ndev->phydev->speed);
 
 	return err;
 }
@@ -3502,6 +3527,9 @@ static int sunxi_gmac_resource_get(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
+	of_property_read_u32(np, "allwinner,syscfg-value", &chip->syscfg_val);
+	chip->no_crc_check = of_property_read_bool(np, "allwinner,no-crc-check");
+
 	ret = of_property_read_u32(np, "sunxi,phy-clk-type", &chip->phy_clk_type);
 	if (ret) {
 		sunxi_warn(&pdev->dev, "Get gmac phy-clk-type failed, use default OSC or pwm\n");
@@ -3852,9 +3880,6 @@ static int sunxi_gmac_probe(struct platform_device *pdev)
 		goto register_err;
 	}
 
-#ifdef MODULE
-	get_custom_mac_address(0, "eth", mac_str);
-#endif
 	/* Before open the device, the mac address should be set */
 	sunxi_gmac_check_addr(ndev, mac_str);
 
@@ -3902,7 +3927,7 @@ alloc_etherdev_err:
 	return ret;
 }
 
-static int sunxi_gmac_remove(struct platform_device *pdev)
+static void sunxi_gmac_remove(struct platform_device *pdev)
 {
 	struct net_device *ndev = platform_get_drvdata(pdev);
 	struct sunxi_gmac *chip = netdev_priv(ndev);
@@ -3919,7 +3944,6 @@ static int sunxi_gmac_remove(struct platform_device *pdev)
 	netif_napi_del(&chip->napi_tx);
 	sunxi_gmac_hardware_deinit(pdev);
 	sunxi_gmac_resource_put(pdev);
-	return 0;
 }
 
 static struct platform_driver sunxi_gmac_driver = {

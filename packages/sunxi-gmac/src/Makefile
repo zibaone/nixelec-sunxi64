@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-only
-ccflag-y+= -DDYNAMIC_DEBUG_MODULE
+ccflags-y += -I$(src)/shim
 
 obj-$(CONFIG_AW_GMAC) += sunxi-gmac.o
 obj-$(CONFIG_AW_GMAC_MDIO) += sunxi-mdio.o

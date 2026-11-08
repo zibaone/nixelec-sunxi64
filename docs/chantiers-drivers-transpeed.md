@@ -9,8 +9,8 @@ sens de le faire. Chaque chantier donne : le symptôme, la preuve mesurée,
 l'endroit du code, la correction visée, comment vérifier, et le coût.
 
 Les références de ligne valent pour l'état actuel de
-`packages/sunxi-gmac/patches/0001-port-7.0-transpeed.patch` ; elles bougeront,
-chercher le symbole plutôt que la ligne.
+`packages/sunxi-gmac/src/sunxi-gmac.c` (l'arbre compilé, sans patch appliqué
+par la dérivation) ; elles bougeront, chercher le symbole plutôt que la ligne.
 
 **Ce qui n'est plus un chantier driver** : la corruption de la charge utile en
 réception (réserve C de l'étude). Le loopback interne du MAC reçoit 3/3 pings

@@ -8,10 +8,12 @@
 #
 # Source : radxa/allwinner-bsp, ref `cubie-aiot-v1.4.6`, `drivers/gmac/`
 # (4 856 lignes : sunxi-gmac.c, sunxi-mdio.c, sunxi-ephy.c, tracepoints).
-# Les sources sont vendorisées dans `src/` et le delta est le patch
-# `patches/0001-port-7.0-transpeed.patch` : portage API vers 7.0.14 et
-# correctifs mesurés sur la carte. Détail des mesures :
-# `docs/etude-portage-sunxi-gmac.md`.
+# `src/` porte **l'arbre complet tel qu'il est compilé** : le BSP d'origine,
+# porté sur l'API 7.0.14, plus les correctifs mesurés sur la carte (voir
+# `docs/etude-portage-sunxi-gmac.md`). Il n'y a plus de patch appliqué par la
+# dérivation : une seule source de vérité, éditable directement.
+# `src/shim/` remplace les en-têtes du BSP absents de l'arbre principal
+# (journalisation, SID, tracepoints).
 #
 # Pourquoi ce pilote : la variante mainline (`allwinner,sun50i-h616-emac1`,
 # patches 0001-0003) ne reçoit **aucune** trame sur cette carte — MAC, DMA et
@@ -34,7 +36,6 @@ stdenv.mkDerivation {
   version = "unstable-2026-11-06";
 
   src = ./src;
-  patches = [ ./patches/0001-port-7.0-transpeed.patch ];
 
   buildInputs = [ kernel.dev ];
 

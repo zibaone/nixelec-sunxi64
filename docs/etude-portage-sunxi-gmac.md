@@ -281,7 +281,7 @@ hors arbre :
 | Élément | Emplacement |
 |---|---|
 | sources vendor | `packages/sunxi-gmac/src/` (pristine) |
-| delta | `packages/sunxi-gmac/patches/0001-port-7.0-transpeed.patch` (249 l.) |
+| delta | appliqué dans `packages/sunxi-gmac/src/` (arbre compilé, plus de patch séparé) |
 | dérivation | `packages/sunxi-gmac/default.nix` |
 | nœud DT | `patches/kernel/0004-arm64-dts-h616-transpeed-sunxi-gmac.patch` |
 | carte | `modules/boards/transpeed-8k618-t.nix` (config noyau, `boot.extraModulePackages`, ordre de `boot.kernelModules`) |
