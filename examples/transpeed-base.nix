@@ -43,9 +43,11 @@
 
   # WiFi : le PSK n'est jamais dans ce dépôt. Il est rendu au boot depuis un
   # fichier fourni par la couche de secrets — côté HavenOS, ragenix le dépose
-  # dans /run/havenos/wifi-psk (même contrat que le kiosque Zero 3). Tant que
-  # `ssid`/`pskFile` sont nuls, aucun supplicant ne démarre : l'image de
-  # bring-up reste utilisable sans identifiants.
+  # dans /run/havenos/wifi-psk (même contrat que le kiosque Zero 3). Un
+  # `networksFile` (fichier wpa_supplicant complet, lui aussi rendu au boot,
+  # voir zero3-base.nix) primerait sur ce couple. Tant que `ssid`/`pskFile`
+  # sont nuls, aucun supplicant ne démarre : l'image de bring-up reste
+  # utilisable sans identifiants.
   nixelec.wifiClient = {
     enable = true;
     interface = "wlan0";

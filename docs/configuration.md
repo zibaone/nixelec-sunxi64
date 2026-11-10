@@ -70,6 +70,7 @@ return nullptr, and Kodi silently decodes in software.
 nixelec.wifi = {
   enable = true;
   interface = "wlan0";
+  # networksFile = "/run/havenos/wpa_supplicant.conf"; # wins over ssid/pskFile
   ssid = "MyNetwork";
   pskFile = "/run/secrets/wifi-psk";
   powerSaveOff = true;
@@ -82,7 +83,15 @@ nixelec.wifi = {
 | `interface` | `wlan0` | Interface created by the driver. |
 | `ssid` | `null` | Network to join; if null, `wpa_supplicant` is not started. |
 | `pskFile` | `null` | Runtime file containing the PSK. Never put the PSK in the store. |
+| `networksFile` | `null` | Complete runtime `wpa_supplicant.conf`; wins over `ssid`/`pskFile`. Never a store path. |
 | `powerSaveOff` | `true` | Toggle power save off after association. |
+
+`networksFile` is the config-as-data path (also available on
+`nixelec.wifiClient`): point it at a complete `wpa_supplicant.conf` rendered at
+boot, for example `/run/havenos/wpa_supplicant.conf`. When the file is readable
+it takes precedence over `ssid`/`pskFile`, and the Nix configuration then carries
+no WiFi identity at all. It is used verbatim, so it must include
+`ctrl_interface` if `wpa_cli` is wanted; the clear-text stays in `/run`.
 
 `iwd` must not be used with this driver: it deletes the interface at startup and
 deadlocks cfg80211. The module enforces `wpa_supplicant`.

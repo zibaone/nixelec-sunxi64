@@ -15,8 +15,11 @@
   system.stateVersion = "26.05";
 
   # WiFi : le module est exposé par la couche carte (`nixosModules.wifi-uwe5622`)
-  # mais n'est pas importé ici. Un PSK ne va pas dans le store.
+  # mais n'est pas importé ici. Un PSK ne va pas dans le store. Deux sources,
+  # la première prioritaire : le fichier wpa_supplicant complet rendu au boot
+  # (config-as-data, aucun SSID dans la configuration) ou le couple ssid+PSK.
   # nixelec.wifi.enable = true;
+  # nixelec.wifi.networksFile = "/run/havenos/wpa_supplicant.conf";
   # nixelec.wifi.ssid = "MyNetwork";
   # nixelec.wifi.pskFile = "/run/agenix/wifi-psk";
 

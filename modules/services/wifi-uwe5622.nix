@@ -36,7 +36,18 @@ in
       default = null;
       description = ''
         Path to a file containing the PSK, read at boot (for example
-        /run/agenix/wifi-psk). Never put the PSK in the Nix store.
+        /run/agenix/wifi-psk). Never put the PSK in the Nix store. Used only
+        when `networksFile` is null or unreadable.
+      '';
+    };
+
+    networksFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = ''
+        Path to a complete wpa_supplicant configuration, read at boot and used
+        verbatim (`nixelec.wifiClient.networksFile`). Takes precedence over
+        `ssid`/`pskFile`, which stay the fallback.
       '';
     };
 
@@ -81,9 +92,16 @@ in
     # Le PSK et wpa_supplicant sont fournis par le module client générique :
     # même comportement qu'avant, mais réutilisable par une carte dont le pilote
     # WiFi n'est pas l'UWE5622 (Broadcom SDIO de la Transpeed par exemple).
+    # `networksFile` est transmis tel quel : cette couche ne choisit pas la
+    # source, elle laisse la priorité au fichier de réseaux.
     nixelec.wifiClient = lib.mkIf cfg.enable {
       enable = true;
-      inherit (cfg) interface ssid pskFile;
+      inherit (cfg)
+        interface
+        ssid
+        pskFile
+        networksFile
+        ;
     };
 
     systemd.services.wlan-ps-off = lib.mkIf cfg.powerSaveOff {

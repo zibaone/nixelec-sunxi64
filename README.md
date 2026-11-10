@@ -131,6 +131,9 @@ an interface.
 
 The PSK is never stored in the Nix store: `nixelec.wifi.pskFile` points to a
 runtime file read at boot (`/run/secrets/wifi-psk`, tmpfs, etc.).
+`nixelec.wifi.networksFile` goes one step further: a complete
+`wpa_supplicant.conf` rendered at boot takes precedence over `ssid`/`pskFile`,
+so the Nix configuration carries no WiFi identity at all (config-as-data).
 
 ## CI
 
