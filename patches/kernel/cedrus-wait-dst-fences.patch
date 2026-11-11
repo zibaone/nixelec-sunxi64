@@ -1,0 +1,73 @@
+cedrus: wait for dma-buf read fences on the capture buffer before VPU programming
+
+Without this wait, userspace (DRM PRIME importer) may still be reading
+the previous frame from the capture buffer while the VPU starts writing
+the next one, producing "timeout waiting for buffer" errors and missing
+frames.
+
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_dec.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_dec.c
+@@ -13,6 +13,9 @@
+  * Marek Szyprowski, <m.szyprowski@samsung.com>
+  */
+ 
++#include <linux/dma-buf.h>
++#include <linux/dma-resv.h>
++
+ #include <media/v4l2-device.h>
+ #include <media/v4l2-ioctl.h>
+ #include <media/v4l2-event.h>
+@@ -22,6 +25,36 @@
+ #include "cedrus_dec.h"
+ #include "cedrus_hw.h"
+ 
++/*
++ * Wait for the fences attached to the capture buffer before writing to it:
++ * the buffer may still be in use by userspace (e.g. a DRM PRIME importer
++ * reading the previous frame).
++ */
++static int cedrus_wait_dst_fences(struct cedrus_ctx *ctx,
++				  struct vb2_v4l2_buffer *dst)
++{
++	struct dma_buf *dbuf;
++	long ret;
++
++	if (!dst)
++		return 0;
++
++	dbuf = dst->vb2_buf.planes[0].dbuf;
++	if (!dbuf)
++		return 0;
++
++	ret = dma_resv_wait_timeout(dbuf->resv, DMA_RESV_USAGE_READ, true,
++				    msecs_to_jiffies(500));
++	if (ret == 0) {
++		dev_warn(ctx->dev->dev, "timeout waiting for dst fences\n");
++		return 0;
++	}
++	if (ret < 0)
++		return ret;
++
++	return 0;
++}
++
+ void cedrus_device_run(void *priv)
+ {
+ 	struct cedrus_ctx *ctx = priv;
+@@ -33,6 +66,16 @@
+ 	run.src = v4l2_m2m_next_src_buf(ctx->fh.m2m_ctx);
+ 	run.dst = v4l2_m2m_next_dst_buf(ctx->fh.m2m_ctx);
+ 
++	error = cedrus_wait_dst_fences(ctx, run.dst);
++	if (error) {
++		v4l2_err(&ctx->dev->v4l2_dev,
++			 "Failed to wait for destination fences: %d\n", error);
++		v4l2_m2m_buf_done_and_job_finish(ctx->dev->m2m_dev,
++						 ctx->fh.m2m_ctx,
++						 VB2_BUF_STATE_ERROR);
++		return;
++	}
++
+ 	/* Apply request(s) controls if needed. */
+ 	src_req = run.src->vb2_buf.req_obj.req;
+ 

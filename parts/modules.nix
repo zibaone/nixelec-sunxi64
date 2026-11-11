@@ -46,12 +46,7 @@ in
 
     # Board: Orange Pi Zero 3 (H618).
     orangepizero3 =
-      {
-        config,
-        lib,
-        pkgs,
-        ...
-      }:
+      { ... }:
       {
         imports = [
           inputs.nixbian.nixosModules.nixbian
@@ -59,9 +54,14 @@ in
           ../modules/boards/orangepizero3.nix
         ];
 
-        nixelec.kernelPackage = lib.mkDefault (familyKernel {
-          inherit config pkgs;
-        });
+        # Pas de `familyKernel` ici : la carte porte ses propres patches noyau
+        # (VP9 + fencing), posés par `modules/boards/orangepizero3.nix`. Un
+        # paquet noyau de famille les ignorerait (`boot.kernelPackages` est
+        # forcé), donc `null` laisse nixbian construire le noyau de la carte.
+        # C'est ce noyau que le job `cache` de la CI construit et publie, et
+        # que HavenOS consomme ensuite : même nixpkgs, même nixbian, donc même
+        # chemin de store des deux côtés.
+        nixelec.kernelPackage = null;
       };
 
     # Board: Transpeed 8K618-T (H618 TV box, board entry local to nixbian).

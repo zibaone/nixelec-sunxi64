@@ -58,6 +58,27 @@ in
       # on the board: CmaFree dropped to 2 MB of 128 while Kodi played a film and
       # a 765-page allocation failed with -16. 256M is the working value.
       boot.kernelParams = [ "cma=256M" ];
+
+      # VP9 et fencing VPU↔GPU : la carte porte ses propres faits, comme la
+      # Transpeed. Posé ici et pas dans `family/sunxi64.nix` : `extraPatches`
+      # change l'entrée du noyau, donc son hash ; au niveau famille, toutes les
+      # cartes H616 reconstruiraient leur noyau pour rien.
+      #
+      # `vp9-cedrus-7.0.14.patch` : décodeur VP9 du VPU (cedrus), absent de
+      # l'arbre 7.0.14.
+      #
+      # `cedrus-wait-dst-fences.patch` : le VPU attend les fences de LECTURE du
+      # dma-buf de capture avant d'écrire. Sans cette attente, Kodi (DRM PRIME)
+      # réutilise le buffer pendant que le VPU écrit — mesuré le 2026-11-10 :
+      # 47 « timeout waiting for buffer », pas d'image VP9. Appliqué après le
+      # patch VP9, ordre vérifié sur l'arbre armbian patché (0 fuzz).
+      #
+      # Les noms de fichiers sont ceux de HavenOS : un chemin de source en
+      # store porte son nom, donc les renommer changerait le hash du noyau.
+      hardware.nixbian.extraPatches = [
+        ../../patches/kernel/vp9-cedrus-7.0.14.patch
+        ../../patches/kernel/cedrus-wait-dst-fences.patch
+      ];
     }
 
     (lib.mkIf cfg.softResetOnShutdown {
