@@ -1,0 +1,52 @@
+From: HavenOS <havenos@localhost>
+Subject: [PATCH] drm/bridge: dw-hdmi: restore the CEC physical address on HPD connect
+
+dw_hdmi_irq() invalidates the CEC physical address when the sink goes away,
+but nothing restores it when the sink comes back: the address is only written
+from dw_hdmi_connector_get_modes(), which runs when userspace re-probes the
+connector after the hotplug uevent.
+
+A DRM master that ignores that uevent - Kodi running on GBM, for instance -
+therefore leaves the adapter permanently unaddressed: the TV remote stops
+working even though the link, the EDID and the video are all fine, and only a
+full restart of the application (which triggers a new modeset) brings CEC
+back.
+
+Push the address the last EDID gave us back into the notifier on HPD connect.
+If the sink moved to another input the value is stale until the next modeset,
+which is no worse than the current permanent invalid state.
+---
+diff --git a/drivers/gpu/drm/bridge/synopsys/dw-hdmi.c b/drivers/gpu/drm/bridge/synopsys/dw-hdmi.c
+index ee88c0e..9a2afdb 100644
+--- a/drivers/gpu/drm/bridge/synopsys/dw-hdmi.c
++++ b/drivers/gpu/drm/bridge/synopsys/dw-hdmi.c
+@@ -3136,6 +3136,29 @@ static irqreturn_t dw_hdmi_irq(int irq, void *dev_id)
+ 			mutex_lock(&hdmi->cec_notifier_mutex);
+ 			cec_notifier_phys_addr_invalidate(hdmi->cec_notifier);
+ 			mutex_unlock(&hdmi->cec_notifier_mutex);
++		} else if (phy_stat & HDMI_PHY_HPD) {
++			u16 pa = hdmi->connector.display_info.source_physical_address;
++
++			/*
++			 * The branch above is the only CEC update this handler
++			 * performs; nothing restores the address on reconnect,
++			 * because it is written from get_modes(), which only
++			 * runs when userspace re-probes the connector after the
++			 * hotplug uevent. A DRM master that ignores the uevent
++			 * (Kodi on GBM) then leaves the adapter unaddressed and
++			 * the TV remote dead until the application restarts.
++			 *
++			 * Reuse the address from the last EDID. Zero means the
++			 * connector was never probed, so there is nothing to
++			 * restore; CEC_PHYS_ADDR_INVALID would only repeat the
++			 * invalidation.
++			 */
++			if (pa && pa != CEC_PHYS_ADDR_INVALID) {
++				mutex_lock(&hdmi->cec_notifier_mutex);
++				cec_notifier_set_phys_addr(hdmi->cec_notifier,
++							   pa);
++				mutex_unlock(&hdmi->cec_notifier_mutex);
++			}
+ 		}
+ 
+ 		if (phy_stat & HDMI_PHY_HPD)

@@ -73,11 +73,20 @@ in
       # 47 « timeout waiting for buffer », pas d'image VP9. Appliqué après le
       # patch VP9, ordre vérifié sur l'arbre armbian patché (0 fuzz).
       #
+      # `cec-restore-phys-addr-hpd.patch` : le handler HPD invalide l'adresse
+      # physique CEC au débranchement et ne la restaure jamais. Elle n'est
+      # réécrite que depuis `get_modes()`, donc seulement si l'espace
+      # utilisateur re-sonde le connecteur après l'uevent. Kodi en GBM ne le
+      # fait pas : la télécommande reste morte jusqu'au prochain modeset
+      # (mesuré le 2026-11-12 : ~5 min sans télécommande après un vrai
+      # hotplug). Le patch repousse l'adresse du dernier EDID sur HPD.
+      #
       # Les noms de fichiers sont ceux de HavenOS : un chemin de source en
       # store porte son nom, donc les renommer changerait le hash du noyau.
       hardware.nixbian.extraPatches = [
         ../../patches/kernel/vp9-cedrus-7.0.14.patch
         ../../patches/kernel/cedrus-wait-dst-fences.patch
+        ../../patches/kernel/cec-restore-phys-addr-hpd.patch
       ];
     }
 
