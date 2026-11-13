@@ -88,6 +88,29 @@ in
         nixelec.kernelPackage = null;
       };
 
+    # Board: H96 Max H618 (H618 TV box, eMMC only, board entry local to nixbian).
+    h96-max-h618 =
+      {
+        config,
+        lib,
+        pkgs,
+        ...
+      }:
+      {
+        imports = [
+          inputs.nixbian.nixosModules.nixbian
+          ../modules/family/sunxi64.nix
+          ../modules/boards/h96-max-h618.nix
+        ];
+
+        # Comme la Transpeed : la carte porte ses propres patches noyau
+        # (PHY AC300, glue stmmac) et sa config, posés par
+        # `modules/boards/h96-max-h618.nix`. Un paquet noyau de famille les
+        # ignorerait, donc `null` laisse nixbian construire le noyau de la
+        # carte.
+        nixelec.kernelPackage = null;
+      };
+
     # Driver-agnostic WPA client: wpa_supplicant + PSK rendered from a secret
     # file at boot. No driver, no firmware, no PSK in the store.
     wifi-client = ../modules/services/wifi-client.nix;

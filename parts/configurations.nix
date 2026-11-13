@@ -42,6 +42,20 @@
   flake.packages.aarch64-linux.transpeed-8k618-t-sd-image =
     self.nixosConfigurations.transpeed-8k618-t.config.system.build.sdImage;
 
+  # H96 Max H618 (box eMMC-only). Même socle, board nixbian locale ; le DTS
+  # vient du patch nixbian `kernel/sunxi-7.0-h96-max` (aucun DTS amont).
+  flake.nixosConfigurations.h96-max-h618 = inputs.nixpkgs.lib.nixosSystem {
+    system = "aarch64-linux";
+    modules = [
+      self.nixosModules.h96-max-h618
+      self.nixosModules.sd-image
+      ../examples/h96-max-base.nix
+    ];
+  };
+
+  flake.packages.aarch64-linux.h96-max-h618-sd-image =
+    self.nixosConfigurations.h96-max-h618.config.system.build.sdImage;
+
   # Pilote Ethernet vendor de la Transpeed, hors arbre. Construit contre le
   # noyau de la carte (qui porte les patches 0001-0004), donc hors du système :
   # le CI doit le construire et le pousser explicitement pour le cache.

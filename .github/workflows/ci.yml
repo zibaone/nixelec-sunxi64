@@ -418,3 +418,98 @@ jobs:
           path: result/sd-image/*.img*
           if-no-files-found: error
           retention-days: 14
+
+  # Image H96 Max H618 : même socle que la Transpeed (H618, AXP1530,
+  # DDR3-648) mais eMMC uniquement, sans slot SD, et un DTS propre fourni
+  # par nixbian (`kernel/sunxi-7.0-h96-max`). Le noyau de cette carte porte
+  # les patches AC300 0001/0003 et le module vendor `sunxi-gmac`.
+  image-h96:
+    name: Image H96 Max (aarch64 natif)
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.build-image == 'true'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 300
+    env:
+      CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      CACHIX_SIGNING_KEY: ${{ secrets.CACHIX_SIGNING_KEY }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Disk — mount /mnt on /nix when it is a separate volume
+        run: |
+          df -h / /mnt || true
+          if [ -d /mnt ] && [ "$(df --output=target /mnt | tail -1)" = "/mnt" ]; then
+            sudo mkdir -p /mnt/nix /nix
+            sudo mount --bind /mnt/nix /nix
+            echo "=== /nix mounted on /mnt ==="
+          fi
+          df -h / || true
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
+            experimental-features = nix-command flakes
+            max-jobs = 8
+            cores = 0
+
+      - uses: cachix/cachix-action@v17
+        if: env.CACHIX_AUTH_TOKEN != '' && env.CACHIX_SIGNING_KEY != ''
+        with:
+          name: ${{ vars.CACHIX_CACHE || 'nixelec' }}
+          authToken: ${{ env.CACHIX_AUTH_TOKEN }}
+          signingKey: ${{ env.CACHIX_SIGNING_KEY }}
+          skipPush: true
+
+      - name: Build the SD image
+        run: |
+          set -euo pipefail
+          override=()
+          if [ -n "${{ github.event.inputs.nixpkgs-rev }}" ]; then
+            override=(--override-input nixpkgs "github:NixOS/nixpkgs/${{ github.event.inputs.nixpkgs-rev }}")
+          fi
+          nix build "${override[@]}" -L \
+            .#nixosConfigurations.h96-max-h618.config.system.build.sdImage
+
+      # Le noyau est la pièce chère (patches AC300 + variante EMAC1) : sans
+      # push, chaque rebuild local repasse par la compilation complète. On
+      # pousse le noyau, son `dev` (nécessaire pour recompiler un module
+      # isolé), le toplevel et l'image, puis on vérifie les narinfos — un
+      # « Pushed » sans narinfo 200 ne sert à rien au consommateur.
+      - name: Push kernel, kernel.dev, toplevel and image; verify narinfos
+        if: env.CACHIX_AUTH_TOKEN != '' && env.CACHIX_SIGNING_KEY != ''
+        env:
+          CACHE: ${{ vars.CACHIX_CACHE || 'nixelec' }}
+        run: |
+          set -euo pipefail
+          override=()
+          if [ -n "${{ github.event.inputs.nixpkgs-rev }}" ]; then
+            override=(--override-input nixpkgs "github:NixOS/nixpkgs/${{ github.event.inputs.nixpkgs-rev }}")
+          fi
+          cfg=".#nixosConfigurations.h96-max-h618.config"
+          kernel=$(nix path-info "${override[@]}" "$cfg.boot.kernelPackages.kernel")
+          kernel_dev=$(nix path-info "${override[@]}" "$cfg.boot.kernelPackages.kernel.dev")
+          toplevel=$(nix path-info "${override[@]}" "$cfg.system.build.toplevel")
+          image=$(nix path-info "${override[@]}" "$cfg.system.build.sdImage")
+          cachix push "$CACHE" "$kernel" "$kernel_dev" "$toplevel" "$image"
+          for p in "$kernel" "$kernel_dev" "$toplevel" "$image"; do
+            h=$(basename "$p" | cut -c1-32)
+            code=$(curl -s -o /dev/null -w '%{http_code}' "https://${CACHE}.cachix.org/$h.narinfo")
+            echo "$code  $(basename "$p")"
+            test "$code" = "200"
+          done
+
+      - name: Summary
+        run: |
+          {
+            echo "## H96 Max H618"
+            echo "- noyau : $(nix eval --raw .#nixosConfigurations.h96-max-h618.config.boot.kernelPackages.kernel.version)"
+            echo "- DTB : $(nix eval --raw .#nixosConfigurations.h96-max-h618.config.hardware.deviceTree.name)"
+            echo "- modules réseau : $(nix eval --json .#nixosConfigurations.h96-max-h618.config.boot.kernelModules)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: h96-max-h618-sd-image
+          path: result/sd-image/*.img*
+          if-no-files-found: error
+          retention-days: 14
