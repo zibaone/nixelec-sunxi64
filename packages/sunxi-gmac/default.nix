@@ -47,9 +47,7 @@ stdenv.mkDerivation {
     make -C ${kernel.dev}/lib/modules/${kernel.modDirVersion}/build M=$PWD \
       KERNELRELEASE=${kernel.modDirVersion} \
       ARCH=${stdenv.hostPlatform.linuxArch} \
-      CONFIG_AW_GMAC=m \
-      CONFIG_AW_GMAC_MDIO=m \
-      CONFIG_AW_EPHY=m \
+      KCFLAGS="-DCONFIG_AW_GMAC=1 -DCONFIG_AW_GMAC_MDIO=1 -DCONFIG_AW_EPHY=1" \
       modules
     runHook postBuild
   '';
@@ -57,7 +55,7 @@ stdenv.mkDerivation {
   installPhase = ''
     runHook preInstall
     install -d $out/lib/modules/${kernel.modDirVersion}/extra
-    cp sunxi-gmac.ko sunxi-mdio.ko $out/lib/modules/${kernel.modDirVersion}/extra/
+    cp sunxi-gmac.ko sunxi-mdio.ko sunxi-ephy.ko $out/lib/modules/${kernel.modDirVersion}/extra/
     runHook postInstall
   '';
 
