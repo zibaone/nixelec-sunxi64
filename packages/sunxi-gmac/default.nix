@@ -55,7 +55,7 @@ stdenv.mkDerivation {
     make -C ${kernel.dev}/lib/modules/${kernel.modDirVersion}/build M=$PWD \
       KERNELRELEASE=${kernel.modDirVersion} \
       ARCH=${stdenv.hostPlatform.linuxArch} \
-      KCFLAGS="-DCONFIG_AW_GMAC=1 -DCONFIG_AW_GMAC_MDIO=1" \
+      KCFLAGS="-DCONFIG_AW_GMAC=1 -DCONFIG_AW_GMAC_MDIO=1 -DCONFIG_AW_EPHY=1" \
       modules
     runHook postBuild
   '';

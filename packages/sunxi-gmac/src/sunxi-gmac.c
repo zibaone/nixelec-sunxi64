@@ -3208,7 +3208,11 @@ static int sunxi_gmac_hardware_init(struct platform_device *pdev)
 	}
 
 #if IS_ENABLED(CONFIG_AW_EPHY)
-	ret = chip->ephy_ops->hardware_init(chip);
+	/* ephy_ops vient de match->data : il vaut NULL avec le compatible
+	 * simple "allwinner,sunxi-gmac", dont l'entree of_match n'a pas de
+	 * .data. Sans cette garde l'appel dereference NULL
+	 * (mesure : Oops, pc sunxi_gmac_probe+0x1c4, eth0 absent). */
+	ret = chip->ephy_ops ? chip->ephy_ops->hardware_init(chip) : 0;
 	if (ret) {
 		sunxi_err(chip->dev, "ephy init failed\n");
 		ret = -EINVAL;
@@ -3250,7 +3254,8 @@ static void sunxi_gmac_hardware_deinit(struct platform_device *pdev)
 	sunxi_gmac_clk_disable(chip);
 
 #if IS_ENABLED(CONFIG_AW_EPHY)
-	chip->ephy_ops->hardware_deinit(chip);
+	if (chip->ephy_ops)
+		chip->ephy_ops->hardware_deinit(chip);
 #endif /* CONFIG_AW_EPHY */
 }
 
@@ -3431,9 +3436,11 @@ static int sunxi_gmac_resource_get(struct platform_device *pdev)
 		sunxi_info(&pdev->dev, "Dma use cut-through mode, rx threshold: %d bytes", rxmode);
 
 #if IS_ENABLED(CONFIG_AW_EPHY)
-	ret = chip->ephy_ops->resource_get(pdev);
-	if (ret)
-		return -EINVAL;
+	if (chip->ephy_ops) {
+		ret = chip->ephy_ops->resource_get(pdev);
+		if (ret)
+			return -EINVAL;
+	}
 
 #endif /* CONFIG_AW_EPHY */
 
@@ -3589,7 +3596,8 @@ static void sunxi_gmac_resource_put(struct platform_device *pdev)
 	struct net_device *ndev = platform_get_drvdata(pdev);
 	struct sunxi_gmac *chip = netdev_priv(ndev);
 
-	chip->ephy_ops->resource_put(pdev);
+	if (chip->ephy_ops)
+		chip->ephy_ops->resource_put(pdev);
 #endif /* CONFIG_AW_EPHY */
 }
 
