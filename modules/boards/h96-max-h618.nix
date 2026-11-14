@@ -69,9 +69,11 @@
       kernel = config.boot.kernelPackages.kernel;
     })
   ];
+  # Charge dans l'initrd : le driver PHY doit etre enregistre avant que le MAC
+  # ne sonde son mdio, sinon la PHY du noeud package reste sans driver et le
+  # netdev n'est jamais cree. Sans noeud package, il ne se lie a rien.
+  boot.initrd.kernelModules = [ "xpowers-acx00" ];
   boot.kernelModules = [
-    # Present dans l'image pour pouvoir basculer le DT sur le driver fusionne
-    # sans reflasher ; sans noeud package il ne se lie a rien.
     "xpowers-acx00"
     "pwm-sunxi-enhance"
     "clk-pwm"
