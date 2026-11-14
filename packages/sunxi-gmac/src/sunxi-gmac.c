@@ -3312,6 +3312,10 @@ static int sunxi_gmac_ephy_v1_resource_get(struct platform_device *pdev)
 	}
 
 	chip->ac300_pwm = devm_pwm_get(chip->dev, NULL);
+	/* Un fournisseur PWM pas encore enregistre renvoie -EPROBE_DEFER : le
+	 * propager tel quel, sinon le probe est perdu definitivement (-EINVAL). */
+	if (IS_ERR(chip->ac300_pwm) && PTR_ERR(chip->ac300_pwm) == -EPROBE_DEFER)
+		return -EPROBE_DEFER;
 	if (IS_ERR_OR_NULL(chip->ac300_pwm)) {
 #if LINUX_VERSION_CODE < KERNEL_VERSION(6, 4, 0)
 		int ret;
@@ -3345,6 +3349,8 @@ static int sunxi_gmac_ephy_v2_resource_get(struct platform_device *pdev)
 	}
 
 	chip->ephy_clk = devm_clk_get(&pdev->dev, "phy25m");
+	if (IS_ERR(chip->ephy_clk) && PTR_ERR(chip->ephy_clk) == -EPROBE_DEFER)
+		return -EPROBE_DEFER;
 	if (IS_ERR(chip->ephy_clk)) {
 		chip->ephy_clk = NULL;
 		sunxi_err(&pdev->dev, "Get ephy-phy25m clk failed\n");
