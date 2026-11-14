@@ -409,6 +409,15 @@ jobs:
             override=(--override-input nixpkgs "github:NixOS/nixpkgs/${{ github.event.inputs.nixpkgs-rev }}")
           fi
           cfg=".#nixosConfigurations.transpeed-8k618-t.config"
+          # `nix path-info` n'évalue que : si un chemin n'a pas été réalisé par
+          # le build de l'image (le noyau `out` n'est pas dans sa fermeture),
+          # `cachix push` échoue avec « path is not valid ». On réalise donc
+          # explicitement ce qu'on pousse.
+          nix build --no-link "${override[@]}" \
+            "$cfg.boot.kernelPackages.kernel" \
+            "$cfg.boot.kernelPackages.kernel.dev" \
+            "$cfg.system.build.toplevel" \
+            "$cfg.system.build.sdImage"
           kernel=$(nix path-info "${override[@]}" "$cfg.boot.kernelPackages.kernel")
           kernel_dev=$(nix path-info "${override[@]}" "$cfg.boot.kernelPackages.kernel.dev")
           toplevel=$(nix path-info "${override[@]}" "$cfg.system.build.toplevel")
@@ -517,6 +526,12 @@ jobs:
             override=(--override-input nixpkgs "github:NixOS/nixpkgs/${{ github.event.inputs.nixpkgs-rev }}")
           fi
           cfg=".#nixosConfigurations.h96-max-h618.config"
+          # Idem : réaliser avant de pousser (cf. job Transpeed).
+          nix build --no-link "${override[@]}" \
+            "$cfg.boot.kernelPackages.kernel" \
+            "$cfg.boot.kernelPackages.kernel.dev" \
+            "$cfg.system.build.toplevel" \
+            "$cfg.system.build.sdImage"
           kernel=$(nix path-info "${override[@]}" "$cfg.boot.kernelPackages.kernel")
           kernel_dev=$(nix path-info "${override[@]}" "$cfg.boot.kernelPackages.kernel.dev")
           toplevel=$(nix path-info "${override[@]}" "$cfg.system.build.toplevel")
