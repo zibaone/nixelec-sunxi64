@@ -69,9 +69,14 @@
       kernel = config.boot.kernelPackages.kernel;
     })
   ];
+  # Present dans l'image mais jamais charge automatiquement : le driver
+  # xpowers revendique la meme PHY que le vendor (meme ID 0x00441400) et le
+  # probe du MAC vendor dereference NULL quand les deux se disputent l'appareil
+  # (mesure : Internal error: Oops [#1], pc sunxi_gmac_probe+0x1c4, eth0 absent).
+  # On le charge a la main, uniquement avec un DT en forme de package, ou le
+  # driver vendor ne matche pas.
+  boot.blacklistedKernelModules = [ "xpowers-acx00" ];
   boot.kernelModules = [
-    # Present dans l'image pour pouvoir basculer le DT sur le driver fusionne
-    # sans reflasher ; sans noeud package il ne se lie a rien.
     "xpowers-acx00"
     "pwm-sunxi-enhance"
     "clk-pwm"
