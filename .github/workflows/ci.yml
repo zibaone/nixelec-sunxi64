@@ -275,7 +275,16 @@ jobs:
             override=(--override-input nixpkgs "github:NixOS/nixpkgs/${NIXPKGS_REV}")
           fi
           s=$(date +%s)
-          nix build "${override[@]}" -L .#packages.aarch64-linux.orangepizero3-sd-image
+          ok=0
+          for essai in 1 2 3; do
+            if nix build "${override[@]}" -L .#packages.aarch64-linux.orangepizero3-sd-image; then
+              ok=1
+              break
+            fi
+            echo "::warning::tentative ${essai}/3 en échec (souvent git.kernel.org injoignable), nouvelle dans 60 s"
+            sleep 60
+          done
+          test "$ok" = 1
           d=$(( $(date +%s) - s ))
           echo "| image | ${d}s |" | tee -a "$GITHUB_STEP_SUMMARY"
 
@@ -372,8 +381,17 @@ jobs:
           if [ -n "${{ github.event.inputs.nixpkgs-rev }}" ]; then
             override=(--override-input nixpkgs "github:NixOS/nixpkgs/${{ github.event.inputs.nixpkgs-rev }}")
           fi
-          nix build "${override[@]}" -L \
-            .#nixosConfigurations.transpeed-8k618-t.config.system.build.sdImage
+          ok=0
+          for essai in 1 2 3; do
+            if nix build "${override[@]}" -L \
+              .#nixosConfigurations.transpeed-8k618-t.config.system.build.sdImage; then
+              ok=1
+              break
+            fi
+            echo "::warning::tentative ${essai}/3 en échec (souvent git.kernel.org injoignable), nouvelle dans 60 s"
+            sleep 60
+          done
+          test "$ok" = 1
 
       # Le noyau est la pièce chère (patches AC300 + variante EMAC1) : sans
       # push, chaque rebuild local repasse par la compilation complète. On
@@ -467,8 +485,21 @@ jobs:
           if [ -n "${{ github.event.inputs.nixpkgs-rev }}" ]; then
             override=(--override-input nixpkgs "github:NixOS/nixpkgs/${{ github.event.inputs.nixpkgs-rev }}")
           fi
-          nix build "${override[@]}" -L \
-            .#nixosConfigurations.h96-max-h618.config.system.build.sdImage
+          # La source du noyau est une fixed-output derivation de 1,5 Gio
+          # absente du cache binaire : chaque runner la récupère sur
+          # git.kernel.org, et une coupure réseau fait perdre le build entier
+          # (observé deux fois). On retente au lieu d'échouer.
+          ok=0
+          for essai in 1 2 3; do
+            if nix build "${override[@]}" -L \
+              .#nixosConfigurations.h96-max-h618.config.system.build.sdImage; then
+              ok=1
+              break
+            fi
+            echo "::warning::tentative ${essai}/3 en échec (souvent git.kernel.org injoignable), nouvelle dans 60 s"
+            sleep 60
+          done
+          test "$ok" = 1
 
       # Le noyau est la pièce chère (patches AC300 + variante EMAC1) : sans
       # push, chaque rebuild local repasse par la compilation complète. On
