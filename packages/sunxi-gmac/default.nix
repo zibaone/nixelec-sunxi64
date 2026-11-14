@@ -44,10 +44,18 @@ stdenv.mkDerivation {
 
   buildPhase = ''
     runHook preBuild
+    # Pas de -DCONFIG_AW_EPHY=1 : ce define n'active pas le pilote PHY (il
+    # n'apparait que dans sunxi-gmac.c, jamais dans sunxi-ephy.c) mais le bloc
+    # d'integration ephy du MAC, qui fait chip->ephy_ops->resource_get() avec
+    # ephy_ops = match->data. Or notre DTS utilise le compatible simple
+    # "allwinner,sunxi-gmac", dont l'entree de of_match n'a pas de .data :
+    # ephy_ops vaut NULL et le probe dererence (Oops sunxi_gmac_probe+0x1c4,
+    # eth0 absent). Avec la macro absente, IS_ENABLED() est faux et le chemin
+    # n'est pas compile -- c'est l'etat qui fonctionnait avant 7fe4012.
     make -C ${kernel.dev}/lib/modules/${kernel.modDirVersion}/build M=$PWD \
       KERNELRELEASE=${kernel.modDirVersion} \
       ARCH=${stdenv.hostPlatform.linuxArch} \
-      KCFLAGS="-DCONFIG_AW_GMAC=1 -DCONFIG_AW_GMAC_MDIO=1 -DCONFIG_AW_EPHY=1" \
+      KCFLAGS="-DCONFIG_AW_GMAC=1 -DCONFIG_AW_GMAC_MDIO=1" \
       modules
     runHook postBuild
   '';
