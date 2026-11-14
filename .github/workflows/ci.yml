@@ -413,17 +413,23 @@ jobs:
           # le build de l'image (le noyau `out` n'est pas dans sa fermeture),
           # `cachix push` échoue avec « path is not valid ». On réalise donc
           # explicitement ce qu'on pousse.
+          #
+          # On pousse aussi la source du noyau (fixed-output de 1,5 Gio) : sans
+          # elle dans le cache, chaque runner la retélécharge sur
+          # git.kernel.org et une coupure réseau fait perdre le build entier.
           nix build --no-link "${override[@]}" \
             "$cfg.boot.kernelPackages.kernel" \
             "$cfg.boot.kernelPackages.kernel.dev" \
             "$cfg.system.build.toplevel" \
-            "$cfg.system.build.sdImage"
+            "$cfg.system.build.sdImage" \
+            "$cfg.boot.kernelPackages.kernel.src"
           kernel=$(nix path-info "${override[@]}" "$cfg.boot.kernelPackages.kernel")
           kernel_dev=$(nix path-info "${override[@]}" "$cfg.boot.kernelPackages.kernel.dev")
+          kernel_src=$(nix path-info "${override[@]}" "$cfg.boot.kernelPackages.kernel.src")
           toplevel=$(nix path-info "${override[@]}" "$cfg.system.build.toplevel")
           image=$(nix path-info "${override[@]}" "$cfg.system.build.sdImage")
-          cachix push "$CACHE" "$kernel" "$kernel_dev" "$toplevel" "$image"
-          for p in "$kernel" "$kernel_dev" "$toplevel" "$image"; do
+          cachix push "$CACHE" "$kernel" "$kernel_dev" "$kernel_src" "$toplevel" "$image"
+          for p in "$kernel" "$kernel_dev" "$kernel_src" "$toplevel" "$image"; do
             h=$(basename "$p" | cut -c1-32)
             code=$(curl -s -o /dev/null -w '%{http_code}' "https://${CACHE}.cachix.org/$h.narinfo")
             echo "$code  $(basename "$p")"
@@ -526,18 +532,21 @@ jobs:
             override=(--override-input nixpkgs "github:NixOS/nixpkgs/${{ github.event.inputs.nixpkgs-rev }}")
           fi
           cfg=".#nixosConfigurations.h96-max-h618.config"
-          # Idem : réaliser avant de pousser (cf. job Transpeed).
+          # Idem : réaliser avant de pousser (cf. job Transpeed), source du
+          # noyau incluse pour que les runners la substituent.
           nix build --no-link "${override[@]}" \
             "$cfg.boot.kernelPackages.kernel" \
             "$cfg.boot.kernelPackages.kernel.dev" \
             "$cfg.system.build.toplevel" \
-            "$cfg.system.build.sdImage"
+            "$cfg.system.build.sdImage" \
+            "$cfg.boot.kernelPackages.kernel.src"
           kernel=$(nix path-info "${override[@]}" "$cfg.boot.kernelPackages.kernel")
           kernel_dev=$(nix path-info "${override[@]}" "$cfg.boot.kernelPackages.kernel.dev")
+          kernel_src=$(nix path-info "${override[@]}" "$cfg.boot.kernelPackages.kernel.src")
           toplevel=$(nix path-info "${override[@]}" "$cfg.system.build.toplevel")
           image=$(nix path-info "${override[@]}" "$cfg.system.build.sdImage")
-          cachix push "$CACHE" "$kernel" "$kernel_dev" "$toplevel" "$image"
-          for p in "$kernel" "$kernel_dev" "$toplevel" "$image"; do
+          cachix push "$CACHE" "$kernel" "$kernel_dev" "$kernel_src" "$toplevel" "$image"
+          for p in "$kernel" "$kernel_dev" "$kernel_src" "$toplevel" "$image"; do
             h=$(basename "$p" | cut -c1-32)
             code=$(curl -s -o /dev/null -w '%{http_code}' "https://${CACHE}.cachix.org/$h.narinfo")
             echo "$code  $(basename "$p")"
