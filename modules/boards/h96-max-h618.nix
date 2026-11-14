@@ -42,12 +42,18 @@
   #
   # Patches 0001 et 0003 seulement : 0002 et 0004 ne touchent que le DTS de la
   # Transpeed, que notre DTS remplace.
+  # 0004 : backport du driver xpowers AC200/AC300 fusionne en 7.4 (acx00.c,
+  # ac300.c, ac200.c + binding package). Deux ecarts d'API mesures contre
+  # 7.0.14 (devm_kzalloc_obj, phy_driver.disable_autonomous_eee). Il coexiste
+  # avec le driver vendorise 0001 : c'est le DT qui choisit lequel se lie.
   hardware.nixbian.extraPatches = [
     ../../patches/kernel/0001-net-phy-add-ac300-ephy.patch
     ../../patches/kernel/0003-net-stmmac-sun8i-h616-emac1.patch
+    ../../patches/kernel/0004-net-phy-xpowers-acx00-backport.patch
   ];
   hardware.nixbian.extraConfig = lib.mkAfter ''
     CONFIG_AC300_PHY=y
+    CONFIG_XPOWERS_ACX00_PHY=m
     CONFIG_AW_GMAC=m
     CONFIG_AW_GMAC_MDIO=m
     CONFIG_AW_EPHY=m
@@ -64,6 +70,9 @@
     })
   ];
   boot.kernelModules = [
+    # Present dans l'image pour pouvoir basculer le DT sur le driver fusionne
+    # sans reflasher ; sans noeud package il ne se lie a rien.
+    "xpowers-acx00"
     "pwm-sunxi-enhance"
     "clk-pwm"
     "sunxi-mdio"
