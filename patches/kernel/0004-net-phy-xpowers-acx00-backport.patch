@@ -23,7 +23,7 @@ Compile en croise aarch64 contre l'arbre 7.0.14 + linux-sunxi64-edge.config.
  drivers/net/phy/xpowers/ac300.c | 387 +
  drivers/net/phy/xpowers/acx00.c | 632 +
  drivers/net/phy/xpowers/acx00.h | 28 +
- drivers/net/phy/Kconfig | 8 +
+ drivers/net/phy/Kconfig | 9 +
  drivers/net/phy/Makefile | 1 +
  7 files changed
 
@@ -1419,7 +1419,7 @@ new file mode 100644
 diff --git a/drivers/net/phy/Kconfig b/drivers/net/phy/Kconfig
 --- a/drivers/net/phy/Kconfig
 +++ b/drivers/net/phy/Kconfig
-@@ -470,4 +470,12 @@
+@@ -470,4 +470,13 @@
  	  the Reduced Gigabit Media Independent Interface(RGMII) between
  	  Ethernet physical media devices and the Gigabit Ethernet controller.
  
@@ -1427,6 +1427,7 @@ diff --git a/drivers/net/phy/Kconfig b/drivers/net/phy/Kconfig
 +	tristate "X-Powers AC200/AC300 Ethernet PHY"
 +	depends on COMMON_CLK && NVMEM && OF_MDIO && REGULATOR
 +	depends on I2C || !I2C
++	select PHY_PACKAGE
 +	help
 +	  Supports the AC200 and AC300 Ethernet PHYs found in the same
 +	  package as some Allwinner SoCs, accessed through the MDIO bus.
