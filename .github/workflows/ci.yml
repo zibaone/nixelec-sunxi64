@@ -189,6 +189,7 @@ jobs:
             .#nixosConfigurations.h96-max-h618.config.system.build.toplevel \
             .#nixosConfigurations.transpeed-8k618-t.config.system.build.toplevel \
             .#nixosConfigurations.orangepizero3.config.boot.kernelPackages.kernel.modules \
+            .#nixosConfigurations.h96-max-h618.config.boot.kernelPackages.kernel.modules \
             .#nixosConfigurations.transpeed-8k618-t.config.boot.kernelPackages.kernel.modules \
             .#packages.aarch64-linux.uwe5622 \
             .#packages.aarch64-linux.sunxi-gmac \
