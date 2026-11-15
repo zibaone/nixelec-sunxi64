@@ -130,5 +130,10 @@ in
     # MAC déterministe dérivée de la SID, pour les cartes qui n'ont aucune
     # adresse gravée en usine (les deux H618 de ce dépôt).
     mac-from-sid = ../modules/system/mac-from-sid.nix;
+
+    # Afficheur facade 7 segments FD650/FD655 (2 fils bit-banges), en espace
+    # utilisateur. Desactive par defaut : un afficheur ne doit pas pouvoir
+    # casser un boot. Broches et protocole mesures : docs/affichage-facade.md.
+    front-panel = ../modules/services/front-panel.nix;
   };
 }

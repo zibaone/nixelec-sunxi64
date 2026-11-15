@@ -84,10 +84,16 @@
       self.nixosModules.h96-max-h618
       self.nixosModules.emmc-root
       self.nixosModules.mac-from-sid
+      # Afficheur facade : opt-in explicite ici, le module reste desactive par
+      # defaut. La H96 est la carte ou le cablage PI/PH a ete mesure et ou
+      # l'affichage a ete relu a l'ecran (docs/affichage-facade.md).
+      self.nixosModules.front-panel
       ../examples/h96-max-base.nix
       {
         nixelec.emmc.rootLabel = "nixelec-h96";
         nixelec.macFromSid.enable = true;
+        nixelec.frontPanel.enable = true;
+        nixelec.frontPanel.text = "H96";
       }
     ];
   };
