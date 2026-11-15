@@ -44,6 +44,10 @@
     ../../patches/kernel/0002-arm64-dts-h616-emac1-ac300.patch
     ../../patches/kernel/0003-net-stmmac-sun8i-h616-emac1.patch
     ../../patches/kernel/0004-arm64-dts-h616-transpeed-sunxi-gmac.patch
+    # Horloge EPHY : le manuel H616 (3.3.5.86) donne PLL_PERI0/24 = 25 MHz,
+    # pas ahb3 (200 MHz). Meme correctif que la H96, verifie sur carte
+    # (corruption 0x55 supprimee).
+    ../../patches/kernel/0005-clk-sunxi-ng-emac25m-from-pll-periph0.patch
   ];
   hardware.nixbian.extraConfig = lib.mkAfter ''
     CONFIG_AC300_PHY=y

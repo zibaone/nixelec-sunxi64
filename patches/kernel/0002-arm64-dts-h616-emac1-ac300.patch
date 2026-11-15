@@ -8,7 +8,7 @@ horloges (25 MHz CCU + 24 MHz PWM5) et la cellule de calibration du SID.
 ---
 --- a/arch/arm64/boot/dts/allwinner/sun50i-h618-transpeed-8k618-t.dts
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h618-transpeed-8k618-t.dts
-@@ -224,3 +224,75 @@
+@@ -224,3 +224,76 @@
  &usbphy {
  	status = "okay";
  };
@@ -21,8 +21,8 @@ horloges (25 MHz CCU + 24 MHz PWM5) et la cellule de calibration du SID.
 +	ac300_pwm_clk: ac300-clk {
 +		compatible = "pwm-clock";
 +		#clock-cells = <0>;
-+		clock-frequency = <24000000>;
-+		pwms = <&pwm 5 42 0>;
++		clock-frequency = <2000000>;   /* 500 ns : PWM_PERIOD_NS du BSP */
++		pwms = <&pwm 5 500 0>;         /* a 42 ns la PHY etait 10x trop vite */
 +	};
 +};
 +
@@ -33,6 +33,7 @@ horloges (25 MHz CCU + 24 MHz PWM5) et la cellule de calibration du SID.
 +&pwm5 {
 +	pinctrl-names = "default";
 +	pinctrl-0 = <&pwm5_pin>;
++	clk_bypass_output = <1>;   /* horloge propre, pas une forme modulee */
 +};
 +
 +/* Ethernet : le RJ45 est sur EMAC1, relie au PHY AC300 co-packaged (liaison
