@@ -87,6 +87,32 @@ sortie pendant que PI12 est en entree pull-down, et garder le premier qui fait
 passer PI12 a 1 — c'est la puce qui se signale elle-meme, sans supposition sur
 le protocole. A faire hors du boot, avec `fd6xx` en mode manuel.
 
+### Où sont les DTBs vendor (inventaire vérifié)
+
+Les DTBs extraits du firmware stock vivent dans le bench, pas dans le dépôt :
+
+```
+~/bench/h96-2026-11-12/fw/fdt/        7 .dtb + 7 .dts décompilés
+  fdt-144384.dtb        67 669 o  1babe2735d1e  DTB vendor COMPLET de la Transpeed, porte fd628_dev
+  fdt-2523136.dtb       67 669 o  1babe2735d1e  identique
+  fdt-92584960.dtb      67 669 o  1babe2735d1e  identique
+  fdt-1232092.dtb       18 901 o  75cd3a032563  DTS SoC vendor `sun50iw9` (= vendor-a de l'archive)
+  fdt-2195676.dtb       18 901 o  75cd3a032563  identique
+  fdt-1952736320.dtb     4 532 o  05f3ce206029  overlay de carte, PMU/régulateurs (= vendor-b)
+  fdt-2328576.dtb        4 532 o  05f3ce206029  identique
+```
+
+Trois tailles, trois contenus : le seul qui porte un nœud d'affichage est le
+DTB complet (3 065 lignes une fois décompilé). Le DTB vendor de la **H96** est
+un fichier distinct : `~/bench/h96-2026-11-12/vendor-fdt.dts` (2 540 lignes,
+`model = "sun50iw9"`), et c'est le seul à porter `fd655_dev`.
+
+**Piège d'inventaire, payé le 2026-11-15** : un `find ~/bench -maxdepth 3` rate
+`fw/fdt/` (profondeur 4) et fait conclure à tort qu'aucun dump ne contient de
+nœud d'affichage — conclusion fausse qui a envoyé chercher un DTB inexistant
+pendant une session. Chercher par **contenu** (`grep -rl "fd628\|fd655" ~/bench`),
+jamais par liste de chemins.
+
 ## 3. Protocole mesuré (H96)
 
 TWI maison, 2 fils, **la puce n'ACK pas** :
