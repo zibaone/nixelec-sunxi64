@@ -183,6 +183,7 @@ jobs:
           fi
           nix build "${override[@]}" -L \
             .#nixosConfigurations.orangepizero3-cache.config.system.build.toplevel \
+            .#nixosConfigurations.h96-max-h618.config.system.build.toplevel \
             .#nixosConfigurations.orangepizero3.config.boot.kernelPackages.kernel.modules \
             .#packages.aarch64-linux.uwe5622 \
             .#packages.aarch64-linux.sunxi-gmac \
@@ -199,6 +200,7 @@ jobs:
             override=(--override-input nixpkgs "github:NixOS/nixpkgs/${NIXPKGS_REV}")
           fi
           toplevel=$(nix path-info "${override[@]}" .#nixosConfigurations.orangepizero3-cache.config.system.build.toplevel)
+          h96=$(nix path-info "${override[@]}" .#nixosConfigurations.h96-max-h618.config.system.build.toplevel)
           driver=$(nix path-info "${override[@]}" .#packages.aarch64-linux.uwe5622)
           gmac=$(nix path-info "${override[@]}" .#packages.aarch64-linux.sunxi-gmac)
           kernel_dev=$(nix path-info "${override[@]}" .#packages.aarch64-linux.kernel-dev)
@@ -208,8 +210,11 @@ jobs:
           # elle. Sans ce push explicite, il doit recompiler le noyau sous
           # émulation — mesuré : 4 h de qemu pour un noyau déjà construit.
           kernel_modules=$(nix path-info "${override[@]}" .#nixosConfigurations.orangepizero3.config.boot.kernelPackages.kernel.modules)
-          cachix push "$CACHE" "$toplevel" "$driver" "$gmac" "$kernel_dev" "$kernel_modules"
-          for p in "$toplevel" "$driver" "$gmac" "$kernel_dev" "$kernel_modules"; do
+          h96_modules=$(nix path-info "${override[@]}" .#nixosConfigurations.h96-max-h618.config.boot.kernelPackages.kernel.modules)
+          cachix push "$CACHE" "$toplevel" "$h96" "$driver" "$gmac" "$kernel_dev" \
+            "$kernel_modules" "$h96_modules"
+          for p in "$toplevel" "$h96" "$driver" "$gmac" "$kernel_dev" \
+            "$kernel_modules" "$h96_modules"; do
             h=$(basename "$p" | cut -c1-32)
             code=$(curl -s -o /dev/null -w '%{http_code}' "https://${CACHE}.cachix.org/$h.narinfo")
             echo "$code  $(basename "$p")"
