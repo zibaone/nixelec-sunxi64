@@ -473,7 +473,57 @@ Le portage n'est donc pas arrêté : il est **livré**, avec une réserve
 matérielle documentée en 7.5 et 7.6, et une suite de chantiers dans
 `docs/chantiers-drivers-transpeed.md`.
 
-## 9. Sources
+## 9. Procédure de montée de noyau et point de décision mainline
+
+Le driver est un arbre vendor porté à la main, sans pile de patches. Son coût
+n'est pas à l'usage, il est à chaque changement de noyau.
+
+### 9.1 Ce qu'il faut relire dans l'arbre vendor
+
+Le delta mesuré 6.1 → 7.0.14 est en §4. Pour un bump ultérieur, les points de
+friction sont les mêmes trois familles d'API :
+
+- `net_device` : `dev_addr` n'est plus modifiable directement
+  (`dev_addr_mod` / `eth_hw_addr_set`) ;
+- enregistrement : `register_netdev` → `devm_register_netdev` ;
+- adresse MAC : `of_get_mac_address` → `of_get_ethdev_address`.
+
+Un `grep -n "LINUX_VERSION_CODE" src/*.c` liste les gardes existantes : c'est
+la carte des endroits à revisiter, et elle est déjà dans l'arbre.
+
+### 9.2 Le test de non-régression (5 minutes, dans cet ordre)
+
+1. `cat /sys/kernel/debug/clk/emac-25m/clk_rate` → attendu **25000000**. S'il
+   donne `200000000`, le correctif CCU (`0005`) a été perdu : le lien monte
+   quand même et se corrompt en `0x55`.
+2. `dmesg | grep -E "sunxi-gmac|AC300"` → doit contenir
+   `Link is Up - 100Mbps/Full`.
+3. `ethtool eth0 | grep -E "Speed|Link detected"` → `100Mb/s` / `yes`.
+4. `ping -c 4 -s 1400 <hôte>` → 0 % de perte. Couvre la longueur RX : un déficit
+   de 7 octets ne se voit pas sur les petites tailles mais casse les grandes.
+5. `scp` d'un fichier de 10 Mo et comparaison du sha256 des deux côtés.
+
+Ces cinq contrôles échouent de façon distincte, ce qui rend le diagnostic
+immédiat : horloge (1), PHY (2-3), longueur RX (4), intégrité de bout en bout (5).
+
+### 9.3 Le point de décision mainline
+
+`0003` (stmmac sur emac1) est **suspendu**, pas abandonné : il n'avait pas de RX
+au dernier essai. Sans rendez-vous explicite, le hors-arbre devient définitif
+par simple écoulement du temps.
+
+Convention proposée : **au prochain bump de noyau, une heure de time-box pour
+retester `0003` avant de re-porter l'arbre vendor.**
+
+- s'il fonctionne, le driver vendor sort de la fermeture et le coût du §9.1
+  disparaît ;
+- s'il échoue, on re-porte en connaissance de cause et on note ce qui a échoué,
+  pour ne pas le rechercher au bump suivant.
+
+C'est le seul chemin de sortie réaliste : il n'est pas dans le portage
+perpétuel.
+
+## 10. Sources
 
 - BSP : `radxa/allwinner-bsp@cubie-aiot-v1.4.6`, `drivers/gmac/*`.
 - Analyse détaillée : `~/.hermes/profiles/havenos/cache/scratch/ephy/AC300-RX-ANALYSE.md`.
