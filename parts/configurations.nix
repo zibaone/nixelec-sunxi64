@@ -71,7 +71,7 @@
       self.nixosModules.emmc-root
       ../examples/transpeed-base.nix
       {
-        nixelec.emmc.rootLabel = "nixelec-transpeed";
+        nixelec.emmc.rootLabel = "nixelec-8k618";
       }
     ];
   };
