@@ -124,27 +124,58 @@ reçoit les trames de la carte avec des checksums valides.
 **Vérification** : `ethtool -k` doit donner `rx-checksumming: off`, et un
 `ping` dans les deux sens doit continuer à passer.
 
-## 2. MAC stable
+## 2. MAC stable — RÉSOLU le 2026-11-15, autrement que prévu
 
 **Symptôme** : `net eth0: Use random mac address` à chaque boot. Pas de
 réservation DHCP, pas de suivi, adresse différente à chaque redémarrage.
 
-**Preuve** : le pilote appelle déjà `of_get_ethdev_address(np, ndev)`
-(≈ ligne 3563) : si le DT porte `mac-address`, elle est utilisée. Sans
-propriété, le noyau en tire une au hasard.
+**Preuve** : le pilote appelle déjà `of_get_ethdev_address(np, ndev)` : si le DT
+porte `mac-address` ou une cellule `nvmem`, elle est utilisée. Sans propriété,
+le noyau en tire une au hasard.
 
-**Correction** : deux options, dans cet ordre de préférence.
+**Correction appliquée** : `modules/system/mac-from-sid.nix` — une unité
+`oneshot` avant `network-pre.target` qui dérive la MAC d'un condensat des 16
+premiers octets de la SID, préfixé `02:` (localement administré). Aucune
+modification du driver, aucune valeur par machine dans les dépôts, et
+l'identité survit à un reflashage.
 
-1. **Propriété DT** dans le patch de carte : `mac-address` sur le nœud
-   `emac1`. Zéro code, mais une MAC en dur par carte — acceptable pour une
-   flotte, pas pour une image générique.
-2. **Lecture de l'eFuse** : la MAC de la puce est dans le SID. C'est ce que
-   faisait `get_custom_mac_address()`, retirée au portage faute de symbole BSP.
-   Réimplémenter avec `nvmem` (le SID est déjà exposé en DT pour la
-   calibration du PHY) donne une MAC stable **et** par unité.
+**Ce que l'énoncé initial supposait à tort** : « la MAC de la puce est dans la
+SID ». **Faux, mesuré** : le dump complet des 256 octets lisibles de la SID
+(FEL `sunxi-fel read 0x03006200 0x100`, et sysfs sur l'autre carte) ne contient
+ni OUI ni adresse — seulement l'ID du SoC et des calibrations. Il n'y a donc
+rien à extraire, et chercher une MAC gravée fait perdre des heures.
 
-**Vérification** : deux reboots consécutifs, même `ip link` ; puis vérifier
-que la MAC n'apparaît pas en double sur le réseau.
+La SID porte en revanche un identifiant **unique par unité** :
+
+```
+H96       : 00 20 80 33 08 48 00 4c 3c 47 46 01 90 21 73 64
+Transpeed : 00 20 80 33 08 48 00 0c 04 c1 05 01 91 1b 78 40
+            └── identiques (ID SoC) ──┘ └──── différents ────┘
+```
+
+**Résultat mesuré** :
+
+| Carte | MAC dérivée = appliquée | Adresse DHCP |
+|---|---|---|
+| Transpeed 8K618-T | `02:a1:15:a7:4f:94` | `192.168.1.51` |
+| H96 Max H618 | `02:16:1e:c3:c2:60` | `192.168.1.50` |
+
+Adresses identiques après un second démarrage : la réservation DHCP redevient
+possible.
+
+**Deux pièges, tous deux silencieux, à ne pas réintroduire** :
+
+- `dd bs=1 count=16` sur l'attribut nvmem ne rend **qu'un octet** : toutes les
+  cartes hachaient le même `0x00` et dérivaient la **même** MAC (collision
+  observée : deux SBC en `02:6e:34:0b:9c:ff`, un seul bail). `head -c 16` lit
+  correctement.
+- une unité systemd n'hérite pas du PATH interactif : sans
+  `path = [ coreutils iproute2 ]`, `dd`/`sha256sum`/`ip` sont introuvables au
+  démarrage (le service échouait au boot et réussissait à la main).
+
+**Vérification** : deux démarrages consécutifs, même `ip link` ; les deux MAC
+doivent être distinctes entre cartes, et identiques à ce que rend
+`nixelec-mac --print`.
 
 ## 3. `-EPROBE_DEFER` au lieu de l'ordre de chargement
 
