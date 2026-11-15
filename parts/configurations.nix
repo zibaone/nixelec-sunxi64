@@ -69,9 +69,11 @@
       self.nixosModules.transpeed-8k618-t
       self.nixosModules.wifi-client
       self.nixosModules.emmc-root
+      self.nixosModules.mac-from-sid
       ../examples/transpeed-base.nix
       {
         nixelec.emmc.rootLabel = "nixelec-8k618";
+        nixelec.macFromSid.enable = true;
       }
     ];
   };
@@ -81,9 +83,11 @@
     modules = [
       self.nixosModules.h96-max-h618
       self.nixosModules.emmc-root
+      self.nixosModules.mac-from-sid
       ../examples/h96-max-base.nix
       {
         nixelec.emmc.rootLabel = "nixelec-h96";
+        nixelec.macFromSid.enable = true;
       }
     ];
   };

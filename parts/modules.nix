@@ -126,5 +126,9 @@ in
     # `fileSystems."/"` sur une étiquette propre à la machine, pour que
     # `root=LABEL=…` ne puisse pas se tromper de support.
     emmc-root = ../modules/system/emmc-root.nix;
+
+    # MAC déterministe dérivée de la SID, pour les cartes qui n'ont aucune
+    # adresse gravée en usine (les deux H618 de ce dépôt).
+    mac-from-sid = ../modules/system/mac-from-sid.nix;
   };
 }
