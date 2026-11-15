@@ -1,34 +1,44 @@
 --- a/drivers/clk/sunxi-ng/ccu-sun50i-h616.c
 +++ b/drivers/clk/sunxi-ng/ccu-sun50i-h616.c
-@@ -489,8 +489,21 @@
+@@ -489,7 +489,15 @@
  static SUNXI_CCU_GATE(bus_spi0_clk, "bus-spi0", "ahb3", 0x96c, BIT(0), 0);
  static SUNXI_CCU_GATE(bus_spi1_clk, "bus-spi1", "ahb3", 0x96c, BIT(1), 0);
  
 -static SUNXI_CCU_GATE(emac_25m_clk, "emac-25m", "ahb3", 0x970,
--		      BIT(31) | BIT(30), 0);
 +/*
-+ * Manuel H616, 3.3.5.86 (EPHY_25M_CLK_REG, 0x0970) : le registre ne
-+ * contient que deux portes, bits 31:30, et la source est PLL_PERI0(1X)
-+ * divisee par 24 -- 600 MHz / 24 = 25 MHz. Le mainline declare cette
-+ * horloge enfant de ahb3 (200 MHz) : la PHY AC300 est alors horlogee huit
-+ * fois trop vite, la recuperation de rythme en reception ne verrouille
-+ * plus sur les trames longues (petites trames OK, grandes corrompues)
-+ * alors que tout le numerique reste sain.
++ * Le manuel H616 (3.3.5.86, EPHY_25M_CLK_REG 0x0970) ne decrit que
++ * deux portes (bits 31:30) ; la source est PLL_PERI0(1X) divisee par
++ * 24, soit 600 MHz / 24 = 25 MHz. Le mainline declare cette horloge
++ * enfant de ahb3, donc a 200 MHz : la PHY AC300 est horlogee huit fois
++ * trop vite et la recuperation de rythme echoue sur les trames
++ * longues, alors que tout le numerique reste sain.
 + */
-+static CLK_FIXED_FACTOR_HWS(emac_25m_div_clk, "emac-25m-div",
-+			    "pll-periph0", 24, 1, 0);
-+
-+static SUNXI_CCU_GATE_HW(emac_25m_clk, "emac-25m",
-+			 &emac_25m_div_clk.hw, 0x970,
-+			 BIT(31) | BIT(30), 0);
++static SUNXI_CCU_GATE(emac_25m_clk, "emac-25m", "emac-25m-div", 0x970,
+ 		      BIT(31) | BIT(30), 0);
  
  static SUNXI_CCU_GATE(bus_emac0_clk, "bus-emac0", "ahb3", 0x97c, BIT(0), 0);
- static SUNXI_CCU_GATE(bus_emac1_clk, "bus-emac1", "ahb3", 0x97c, BIT(1), 0);
-@@ -836,6 +849,7 @@
- 	&spi1_clk.common,
- 	&bus_spi0_clk.common,
- 	&bus_spi1_clk.common,
-+	&emac_25m_div_clk.hw,
- 	&emac_25m_clk.common,
- 	&bus_emac0_clk.common,
- 	&bus_emac1_clk.common,
+@@ -1169,6 +1177,7 @@
+ 	void __iomem *reg;
+ 	u32 val;
+ 	int ret, i;
++	struct clk_hw *hw;
+ 
+ 	reg = devm_platform_ioremap_resource(pdev, 0);
+ 	if (IS_ERR(reg))
+@@ -1235,6 +1244,16 @@
+ 	if (ret)
+ 		return ret;
+ 
++	/*
++	 * Diviseur fixe /24 sur PLL_PERI0 : la source reelle de l'horloge
++	 * EPHY 25M. emac-25m, declaree orpheline juste au-dessus, s'y
++	 * rattache lors du reparentage des horloges sans parent.
++	 */
++	hw = devm_clk_hw_register_fixed_factor(&pdev->dev, "emac-25m-div",
++					       "pll-periph0", 0, 1, 24);
++	if (IS_ERR(hw))
++		return PTR_ERR(hw);
++
+ 	/* Reparent CPU during CPU PLL rate changes */
+ 	ccu_mux_notifier_register(pll_cpux_clk.common.hw.clk,
+ 				  &sun50i_h616_cpu_nb);
