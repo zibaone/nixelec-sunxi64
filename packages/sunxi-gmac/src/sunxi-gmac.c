@@ -33,6 +33,7 @@
 #include <linux/pinctrl/consumer.h>
 #include <linux/pinctrl/pinctrl.h>
 #include <linux/etherdevice.h>
+#include <linux/ip.h>
 #include <linux/netdevice.h>
 #include <linux/phy.h>
 #include <linux/init.h>
@@ -2530,13 +2531,18 @@ static int sunxi_gmac_rx(struct sunxi_gmac *chip, int limit)
 		if (likely(status != llc_snap))
 			frame_len -= ETH_FCS_LEN;
 
+#if 0
 		/*
-		 * Le MAC compte aussi le préambule (7 octets) dans la longueur du
-		 * descripteur, alors qu'il ne le stocke pas : sans ce retrait la pile
-		 * reçoit 7 octets de trop.
+		 * Retrait retire le 2026-11-15 : le MAC ne compte PAS le
+		 * preambule dans la longueur du descripteur sur cette carte.
+		 * Le soustraire ici produisait une troncature de 7 octets sur
+		 * chaque trame recue (mesure : « total length 84 > length 77 »),
+		 * la pile IP rejetant les paquets incomplets. Conserve pour
+		 * memoire du raisonnement qui l'avait introduit.
 		 */
 		if (likely(frame_len > SUNXI_GMAC_RX_PREAMBLE_LEN))
 			frame_len -= SUNXI_GMAC_RX_PREAMBLE_LEN;
+#endif
 
 		trace_sunxi_gmac_skb_dump(chip->skb, chip->ndev->name, 0);
 
@@ -2559,6 +2565,23 @@ static int sunxi_gmac_rx(struct sunxi_gmac *chip, int limit)
 
 		chip->skb->protocol = eth_type_trans(chip->skb, chip->ndev);
 		chip->skb->ip_summed = CHECKSUM_NONE;
+
+		/*
+		 * Trames plus courtes que le minimum Ethernet : la carte les
+		 * rembourre a 60 octets, et le descripteur annonce la longueur
+		 * rembourree. Sans ce rognage la pile recoit plus d'octets que
+		 * l'en-tete IP ne l'annonce et rejette le paquet (mesure :
+		 * `ping -s 0` sans reponse, `-s 16` et au-dela OK).
+		 */
+		if (chip->skb->protocol == htons(ETH_P_IP) &&
+		    chip->skb->len >= ETH_HLEN + sizeof(struct iphdr)) {
+			const struct iphdr *iph =
+				(const struct iphdr *)chip->skb->data;
+			unsigned int reelle = ntohs(iph->tot_len) + ETH_HLEN;
+
+			if (reelle < chip->skb->len)
+				skb_trim(chip->skb, reelle);
+		}
 
 #ifdef PKT_DEBUG
 		printk("RX:\n");
