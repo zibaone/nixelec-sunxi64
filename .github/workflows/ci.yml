@@ -186,6 +186,9 @@ jobs:
             .#nixosConfigurations.h96-max-h618.config.system.build.toplevel \
             .#nixosConfigurations.transpeed-8k618-t.config.system.build.toplevel \
             .#nixosConfigurations.orangepizero3.config.boot.kernelPackages.kernel.modules \
+            # Le toplevel tire `out` mais PAS la sortie `modules` : sans cette ligne
+            # le push echoue en « path ...-linux-7.0.14-modules is not valid ».
+            .#nixosConfigurations.transpeed-8k618-t.config.boot.kernelPackages.kernel.modules \
             .#packages.aarch64-linux.uwe5622 \
             .#packages.aarch64-linux.sunxi-gmac \
             .#packages.aarch64-linux.kernel-dev
