@@ -121,5 +121,10 @@ in
 
     # Allwinner SD image: U-Boot at offset 8 KiB, extlinux, DTB.
     sd-image = ../modules/image/sunxi-sd.nix;
+
+    # Racine sur eMMC : machine installée, sans le module d'image. Déclare
+    # `fileSystems."/"` sur une étiquette propre à la machine, pour que
+    # `root=LABEL=…` ne puisse pas se tromper de support.
+    emmc-root = ../modules/system/emmc-root.nix;
   };
 }

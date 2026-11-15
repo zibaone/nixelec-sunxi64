@@ -56,6 +56,39 @@
   flake.packages.aarch64-linux.h96-max-h618-sd-image =
     self.nixosConfigurations.h96-max-h618.config.system.build.sdImage;
 
+  # Variantes eMMC : machine installée sur sa eMMC, pas une image SD.
+  #
+  # Sans `sd-image`, deux choses changent et c'est le but : `fileSystems."/"`
+  # est déclaré par `emmc-root` sur une étiquette propre à la machine, et le
+  # label système devient la date+rev au lieu de `sd-card-…` — il ne ment plus
+  # sur ce qui tourne. Le DTB, lui, reste fourni par `hardware.deviceTree`
+  # (nixbian), donc `FDT` apparaît toujours dans l'extlinux généré.
+  flake.nixosConfigurations.transpeed-8k618-t-emmc = inputs.nixpkgs.lib.nixosSystem {
+    system = "aarch64-linux";
+    modules = [
+      self.nixosModules.transpeed-8k618-t
+      self.nixosModules.wifi-client
+      self.nixosModules.emmc-root
+      ../examples/transpeed-base.nix
+      {
+        nixelec.emmc.rootLabel = "nixelec-transpeed";
+      }
+    ];
+  };
+
+  flake.nixosConfigurations.h96-max-h618-emmc = inputs.nixpkgs.lib.nixosSystem {
+    system = "aarch64-linux";
+    modules = [
+      self.nixosModules.h96-max-h618
+      self.nixosModules.emmc-root
+      ../examples/h96-max-base.nix
+      {
+        nixelec.emmc.rootLabel = "nixelec-h96";
+      }
+    ];
+  };
+
+
   # Pilote Ethernet vendor de la Transpeed, hors arbre. Construit contre le
   # noyau de la carte (qui porte les patches 0001-0004), donc hors du système :
   # le CI doit le construire et le pousser explicitement pour le cache.
