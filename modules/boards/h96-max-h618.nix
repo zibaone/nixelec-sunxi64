@@ -50,11 +50,12 @@
     ../../patches/kernel/0001-net-phy-add-ac300-ephy.patch
     ../../patches/kernel/0003-net-stmmac-sun8i-h616-emac1.patch
     ../../patches/kernel/0004-net-phy-xpowers-acx00-backport.patch
-    # Horloge EPHY : decrit le diviseur (CCU 0x970 bits 29:28) que le BSP
-    # Allwinner regle et que le mainline ignorait. Sans lui la PHY est
-    # horlogee a 200 MHz (ahb3 brut) au lieu de 25 : lien degrade a 10 Mbit/s
-    # puis, meme a 100, charge utile corrompue sur les trames longues.
-    ../../patches/kernel/0005-clk-sunxi-ng-emac25m-divider.patch
+    # Horloge EPHY : le manuel H616 (§3.3.5.86) decrit 0x970 comme deux portes
+    # dont la source est PLL_PERI0/24 (600/24 = 25 MHz). Le mainline la declare
+    # enfant de ahb3 (200 MHz) : la PHY est horlogee 8x trop vite, le lien
+    # tombe a 10 Mbit/s et les trames longues arrivent corrompues alors que le
+    # numerique est sain.
+    ../../patches/kernel/0005-clk-sunxi-ng-emac25m-from-pll-periph0.patch
   ];
   hardware.nixbian.extraConfig = lib.mkAfter ''
     CONFIG_AC300_PHY=y
