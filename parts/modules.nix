@@ -132,10 +132,15 @@ in
     # Allwinner SD image: U-Boot at offset 8 KiB, extlinux, DTB.
     sd-image = ../modules/image/sunxi-sd.nix;
 
-    # Racine sur eMMC : machine installée, sans le module d'image. Déclare
-    # `fileSystems."/"` sur une étiquette propre à la machine, pour que
-    # `root=LABEL=…` ne puisse pas se tromper de support.
-    emmc-root = ../modules/system/emmc-root.nix;
+    # Racine sur eMMC : contrat dans nixelec-common (fileSystems."/" par
+    # etiquette, bootloader-agnostique). Cette couche ajoute les outils de banc
+    # (bench) que les configurations installees utilisaient.
+    emmc-root =
+      { pkgs, ... }:
+      {
+        imports = [ inputs.nixelec-common.nixosModules.emmc-root ];
+        nixelec.emmc.extraPackages = [ (pkgs.callPackage ../packages/bench { }) ];
+      };
 
     # MAC déterministe dérivée de la SID, pour les cartes qui n'ont aucune
     # adresse gravée en usine (les deux H618 de ce dépôt).
