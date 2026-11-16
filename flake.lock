@@ -45,11 +45,11 @@
         "systems": "systems"
       },
       "locked": {
-        "lastModified": 1794843513,
-        "narHash": "sha256-ggWF35+g74o9oSlp4ZPgjEwhkhuLix4N4K0rk+KBqik=",
+        "lastModified": 1794844325,
+        "narHash": "sha256-e5uGoNBmpZ62gH4nF9nOf5QDny4h6MtcEWipp04UcK8=",
         "owner": "zibaone",
         "repo": "nixbian",
-        "rev": "d76977ce981bb17fcab853337c6c1f2fa79c23bb",
+        "rev": "ea40cd5c329bb5a425ece180e57ecfa4a5022b1a",
         "type": "github"
       },
       "original": {
