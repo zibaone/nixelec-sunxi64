@@ -117,6 +117,7 @@ in
     # Le noyau est produit ici, plus par nixbian (modèle B).
     sunxi64 =
       {
+        config,
         lib,
         pkgs,
         ...
@@ -130,6 +131,10 @@ in
         nixelec.kernelPackage = lib.mkDefault (familyKernel {
           inherit pkgs;
         });
+        # Le module nixbian pose aussi `boot.kernelPackages` après nous ; sans
+        # cette ligne il reprend son noyau à lui et le kiosque ne voit plus les
+        # patches de la couche (garde-fou VP9/cedrus).
+        hardware.nixbian.kernelPackage = lib.mkForce config.nixelec.kernelPackage;
       };
 
     # Board: Orange Pi Zero 3 (H618). Le noyau de famille porte les patches
