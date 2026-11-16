@@ -1,0 +1,23 @@
+# Télécommande HK1.1 — profil « hk1-1 ».
+#
+# Un fichier = une télécommande : le noyau n'étend dev->keybit que pour
+# les keycodes réellement écrits, et un fichier multi-profils laisse des
+# touches hors keybit (mesuré le 27/10, voir specs/ir-receiver-zero3.md §2.0).
+# variant = "nec" : encodage des scancodes (12 entrées).
+[[protocols]]
+name = "hk1-1"
+protocol = "nec"
+
+[protocols.scancodes]
+0x8040 = "KEY_POWER"
+0x804c = "KEY_MENU"
+0x8011 = "KEY_HOME"
+0x8016 = "KEY_UP"
+0x8051 = "KEY_LEFT"
+0x8013 = "KEY_ENTER"
+0x8050 = "KEY_RIGHT"
+0x801a = "KEY_DOWN"
+0x8019 = "KEY_BACK"
+0x8010 = "KEY_VOLUMEDOWN"
+0x8018 = "KEY_VOLUMEUP"
+0x8000 = "KEY_MUTE"

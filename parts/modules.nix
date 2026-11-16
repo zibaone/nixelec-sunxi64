@@ -135,5 +135,10 @@ in
     # utilisateur. Desactive par defaut : un afficheur ne doit pas pouvoir
     # casser un boot. Broches et protocole mesures : docs/affichage-facade.md.
     front-panel = ../modules/services/front-panel.nix;
+
+    # Recepteur IR via rc-core (sunxi-ir) + ir-keytable, sans LIRC. Plusieurs
+    # telecommandes cohabitent : les tables sont fusionnees, un conflit de
+    # scancode non tranche echoue a l'eval. Desactive par defaut.
+    ir = ../modules/services/ir.nix;
   };
 }

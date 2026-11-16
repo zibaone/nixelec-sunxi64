@@ -75,6 +75,7 @@
       # pousser les lignes en sortie franche) et l'adresse 0x68 porte le
       # chiffre de gauche, pas de droite.
       self.nixosModules.front-panel
+      self.nixosModules.ir
       ../examples/transpeed-base.nix
       {
         nixelec.emmc.rootLabel = "nixelec-8k618";
@@ -85,6 +86,10 @@
         nixelec.frontPanel.pushPull = true;
         nixelec.frontPanel.leftToRight = true;
         nixelec.frontPanel.text = "8618";
+        # IR : le DTS mainline de la carte active deja `ir@7040000` (verifie :
+        # rc0 = sunxi-ir au boot), donc pas d'overlay. `remotes` vide = toutes
+        # les tables du module ; deposer un .toml suffit a en ajouter une.
+        nixelec.ir.enable = true;
       }
     ];
   };
@@ -99,12 +104,19 @@
       # defaut. La H96 est la carte ou le cablage PI/PH a ete mesure et ou
       # l'affichage a ete relu a l'ecran (docs/affichage-facade.md).
       self.nixosModules.front-panel
+      self.nixosModules.ir
       ../examples/h96-max-base.nix
       {
         nixelec.emmc.rootLabel = "nixelec-h96";
         nixelec.macFromSid.enable = true;
         nixelec.frontPanel.enable = true;
         nixelec.frontPanel.text = "H96";
+        # IR : le DTS de carte laisse `ir@7040000` en `disabled` (verifie sur
+        # le DTB deploye), contrairement a la Transpeed. L'overlay ne fait que
+        # passer le statut a `okay` : la broche PH10 est deja cablee par
+        # `ir_rx_pin` dans sun50i-h616.dtsi.
+        nixelec.ir.enable = true;
+        nixelec.ir.enableDeviceTree = true;
       }
     ];
   };

@@ -1,0 +1,42 @@
+# Télécommande clone hk1x3 (boîtier bleu, scancodes 24 bits) — profil « clone ».
+#
+# Un fichier = une télécommande : le noyau n'étend dev->keybit que pour
+# les keycodes réellement écrits, et un fichier multi-profils laisse des
+# touches hors keybit (mesuré le 27/10, voir specs/ir-receiver-zero3.md §2.0).
+# variant = "necx" : encodage des scancodes (26 entrées).
+[[protocols]]
+name = "clone"
+protocol = "nec"
+variant = "necx"
+
+[protocols.scancodes]
+0x2fe40 = "KEY_POWER"
+0x2fe16 = "KEY_UP"
+0x2fe1a = "KEY_DOWN"
+0x2fe51 = "KEY_LEFT"
+0x2fe50 = "KEY_RIGHT"
+0x2fe13 = "KEY_ENTER"
+0x2fe10 = "KEY_VOLUMEDOWN"
+0x2fe19 = "KEY_BACK"
+0x2fe18 = "KEY_VOLUMEUP"
+0x2fe11 = "KEY_HOME"
+0x2fe00 = "KEY_MENU"
+0x2fe4c = "KEY_CONFIG"
+0x2fe4e = "KEY_1"
+0x2fe0d = "KEY_2"
+0x2fe0c = "KEY_3"
+0x2fe4a = "KEY_4"
+0x2fe09 = "KEY_5"
+0x2fe08 = "KEY_6"
+0x2fe46 = "KEY_7"
+0x2fe05 = "KEY_8"
+0x2fe04 = "KEY_9"
+0x2fe01 = "KEY_0"
+0x2fe42 = "KEY_DELETE"
+# MUTE mesuré à 0x2fe43 sur la N5 le 2026-11-01 (l'ancienne entrée `0x2fe0f`
+# venait de la disposition hk1x3 : elle sonnait juste sur le papier, pas sur la
+# carte). `0x2fe0f` est retiré plutôt que réaffecté au hasard : aucune touche
+# mesurée ne l'émet.
+0x2fe43 = "KEY_MUTE"
+0x2fe4b = "KEY_REWIND"
+0x2fe4f = "KEY_FORWARD"
