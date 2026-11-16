@@ -11,7 +11,14 @@ let
 
   # La commande est construite ici pour que `text` puisse contenir des
   # espaces sans casser le script systemd.
-  action = if cfg.text == "" then [ "blank" ] else [ "write" cfg.text ];
+  action =
+    if cfg.text == "" then
+      [ "blank" ]
+    else
+      [
+        "write"
+        cfg.text
+      ];
 
   args = [
     "--chip"
