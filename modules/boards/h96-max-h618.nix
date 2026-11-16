@@ -56,6 +56,12 @@
     # tombe a 10 Mbit/s et les trames longues arrivent corrompues alors que le
     # numerique est sain.
     ../../patches/kernel/0005-clk-sunxi-ng-emac25m-from-pll-periph0.patch
+    # AIC8800 SDIO : la serie Armbian sunxi-7.0 (patch nixbian 3401) ajoute les
+    # 136 fichiers de `drivers/net/wireless/aic8800_sdio/` mais ne touche ni le
+    # Makefile ni le Kconfig de `drivers/net/wireless/` : kbuild ne descend
+    # jamais dans ce repertoire et aucun `.ko` n'est produit (verifie sur les
+    # sorties `*-modules` de 7.0.14). Ce patch ajoute les deux lignes d'accroche.
+    ../../patches/kernel/0006-net-wireless-wire-aic8800-sdio-into-kbuild.patch
   ];
   hardware.nixbian.extraConfig = lib.mkAfter ''
     CONFIG_AC300_PHY=y
@@ -94,9 +100,24 @@
   # Zero 3 / Transpeed ; la box a 2 Gio, il n'y a pas à la réduire.
   boot.kernelParams = [ "cma=256M" ];
 
-  # WiFi AIC8800 : le pilote est compilé en module par la série Armbian
-  # (`CONFIG_AIC8800_WLAN_SUPPORT=m`), mais son firmware n'est pas encore
-  # packagé dans cette couche. Rien ne le charge tant que ce n'est pas fait :
-  # `nixelec.wifiHardware` reste à `none` (défaut), le service UWE5622 reste
-  # inerte. À traiter dans un second temps — l'Ethernet est le chemin utile.
+  # WiFi AIC8800D80 sur SDIO1. Mesuré sur la carte le 15/11 : la carte SDIO
+  # s'énumère déjà sans pilote (`mmc0:390b`, `0xc8a1:0x0082` + func2 `0x0182`),
+  # ce qui identifie un D80 — ni DC (`0xc08d`), ni D80x2 (`0x2082`).
+  #
+  # Le SDK lit ses blobs par `filp_open` (`CONFIG_USE_FW_REQUEST = n` dans
+  # `aic8800_bsp/Makefile`), pas par `request_firmware` : sous NixOS il n'y a
+  # pas de `/lib/firmware`, les firmwares vivent dans
+  # `/run/current-system/firmware` (via `hardware.firmware`) et c'est donc
+  # `aic_fw_path` du module bsp qui est pointé dessus. Corollaire : les blobs ne
+  # doivent pas être compressés — `hardware.firmwareCompression = "none"` est
+  # déjà posé par la famille sunxi64.
+  #
+  # `aic8800_btlpm` reste non chargé : la box n'a pas de Bluetooth et le pilote
+  # réclame les propriétés DT `bt_hostwake`/`bt_wake`, absentes ici.
+  nixelec.wifiHardware = lib.mkDefault "aic8800";
+  hardware.firmware = [ (pkgs.callPackage ../../packages/aic8800-firmware { }) ];
+  boot.extraModprobeConfig = ''
+    options aic8800_bsp aic_fw_path=/run/current-system/firmware/aic8800_sdio
+    options aic8800_fdrv aicwf_dbg_level=0
+  '';
 }

@@ -25,6 +25,7 @@ in
       "none"
       "uwe5622"
       "brcmfmac"
+      "aic8800"
     ];
     default = "none";
     description = ''
@@ -177,6 +178,18 @@ in
       ++ lib.optionals (config.nixelec.wifiHardware == "brcmfmac") [
         "brcmfmac"
         "brcmfmac-wcc"
+      ]
+      # WiFi SDIO AIC8800D80. Les deux modules sont construits par le noyau
+      # (patch nixbian 3401) mais sous `drivers/net/wireless/aic8800_sdio/`,
+      # hors des préfixes du socle de l'élagage et sans alias `of:` : seule
+      # cette liste les garde dans la fermeture. `aic8800_bsp` sonde le SDIO et
+      # télécharge le firmware, `aic8800_fdrv` crée l'interface netdev ; fdrv
+      # tire bsp par `modules.dep`, l'ordre de chargement n'est donc pas
+      # critique. `aic8800_btlpm` est volontairement absent : il réclame les
+      # propriétés DT `bt_hostwake`/`bt_wake`, absentes de la carte.
+      ++ lib.optionals (config.nixelec.wifiHardware == "aic8800") [
+        "aic8800_bsp"
+        "aic8800_fdrv"
       ];
 
       hardware.graphics.enable = lib.mkDefault true;
