@@ -134,6 +134,14 @@ in
         # Le module nixbian pose aussi `boot.kernelPackages` après nous ; sans
         # cette ligne il reprend son noyau à lui et le kiosque ne voit plus les
         # patches de la couche (garde-fou VP9/cedrus).
+        # Le garde-fou HavenOS vérifie cette liste ; sous le modèle B le noyau
+        # de famille porte ces patches, mais on les déclare aussi ici pour que
+        # le repli nixbian et le garde-fou restent cohérents.
+        hardware.nixbian.extraPatches = lib.mkForce [
+          ../patches/kernel/vp9-cedrus-7.0.14.patch
+          ../patches/kernel/cedrus-wait-dst-fences.patch
+          ../patches/kernel/cec-restore-phys-addr-hpd.patch
+        ];
         hardware.nixbian.kernelPackage = lib.mkForce config.nixelec.kernelPackage;
       };
 
