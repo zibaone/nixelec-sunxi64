@@ -47,6 +47,12 @@ exactement le risque que le chantier voulait eviter.
 > sur la H96 échoue en `GPIO_V2_GET_LINE_IOCTL` (ligne hors du r_pio), et
 > `/sys/class/gpio/gpiochip0 -> 300b000.pinctrl` ne reflète pas l'index du
 > chardev. Vérifier avec `gpiodetect` avant de changer la donnée de carte.
+>
+> **Confirmé le 2026-11-16** : `fd6xx --chip /dev/gpiochip1 --clk 226 --dat 227
+> --brightness 3 write H96` allume bien l'écran H96. Le service au boot
+> écrivait avant la création du GPIO (l'écran restait éteint alors que `fd6xx`
+> sortait 0) ; il démarre maintenant après `dev-gpiochip1.device`
+> (`nixelec-common 722e300`).
 
 ### Transpeed 8K618-T — **PI11 = CLK, PI12 = DAT**, push-pull obligatoire, **résolue le 2026-11-16**
 

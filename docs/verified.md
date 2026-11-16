@@ -66,18 +66,19 @@ Measured on the bench on 2026-11-06/07, kernel `7.0.14` with patches 0001-0004.
 
 ## On the board (H96 Max H618)
 
-The board (`.50`) was **not reachable on 2026-11-16**: only the evaluation and
-kernel-derivation checks below were run. The other rows are explicitly
-unchecked; do not read the green evaluation as a hardware proof.
+The board (`.50`) is **reachable on 2026-11-16** (`eth0` DHCP
+`192.168.1.50/24`, 100 Mb/s, SSH root). The hardware rows that are still not
+measured are marked as such.
 
 | Check | Command / observation | Status |
 |---|---|---|
+| Ethernet (`sunxi-gmac`) | `ip -br addr`; `ping`/SSH from the PC | measured 2026-11-16: `eth0 UP`, DHCP `192.168.1.50/24`, 100 Mb/s, ping 0 % loss, SSH root OK |
 | Toplevel evaluation (eMMC) | `nix eval --raw .#nixosConfigurations.h96-max-h618-emmc.config.system.build.toplevel.drvPath` | verified 2026-11-16 |
 | HavenOS kiosk evaluation | `nix eval --raw .#nixosConfigurations.h96-max-h618-edge-kodi.config.system.build.toplevel.drvPath` | verified 2026-11-16; eMMC root label `nixelec-h96` |
 | AIC8800 kbuild hook | `nix derivation show` on the kernel | `3401-net-wireless-backport-aic8800-sdio` and `0001-…kbuild` present; `0006` absent. `.ko` not materialized |
 | eMMC cold boot | boot with HDMI | **not measured** |
 | IR (`sunxi-ir`, overlay `ir@7040000`) | `ir-keytable -t` | **not measured**; the overlay path is only evaluated |
-| Front panel (FD655, PH2/PH3, text `H96`) | screen read | measured 2026-11-15 (`docs/affichage-facade.md`) |
+| Front panel (FD655, PH2/PH3, text `H96`) | screen read | measured 2026-11-15; **confirmed again 2026-11-16** after `fd6xx --chip /dev/gpiochip1 --clk 226 --dat 227 --brightness 3 write H96`. The boot service was starting before `dev-gpiochip1.device`; fixed in `nixelec-common 722e300` (image redeploy pending). |
 | WiFi AIC8800D80 | `iw dev wlan0 scan` | **not measured** |
 | HDMI / Kodi GBM | `modetest`, 1080p playback | **not measured** |
 
