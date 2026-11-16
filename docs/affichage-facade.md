@@ -1,8 +1,9 @@
 # Afficheur de facade FD650/FD655 — broches, protocole, arbitrage
 
-État au 2026-11-15. Ce document fixe **ce qui est mesuré** et ce qui reste
-ouvert, pour qu'une session ne reparte pas d'une hypothese fausse. Il prime sur
-les notes de prompt du chantier, qui contenaient une erreur de banque (voir §2).
+État au 2026-11-16 : **les deux cartes affichent**, vérifié à l'écran et après
+redémarrage. Ce document fixe **ce qui est mesuré** et ce qui reste ouvert,
+pour qu'une session ne reparte pas d'une hypothese fausse. Il prime sur les
+notes de prompt du chantier, qui contenaient une erreur de banque (voir §2).
 
 ## 1. Ce que sont ces afficheurs
 
@@ -39,7 +40,7 @@ La note « PI2/PI3 » du prompt de chantier etait donc fausse : elle venait d'un
 lecture de `0x07` comme « 8e banque ». Une erreur de banque sur un GPIO est
 exactement le risque que le chantier voulait eviter.
 
-### Transpeed 8K618-T — **PI11 = CLK, PI12 = DAT** (DTS vendor), chaîne vendor 2 fils, dalle muette
+### Transpeed 8K618-T — **PI11 = CLK, PI12 = DAT**, push-pull obligatoire, **résolue le 2026-11-16**
 
 Le DTB vendor du firmware stock (`H618.apollo-p17.8K618-T_100M_12_FD650`,
 decompresse, FDT a l'offset 144384) donne :
@@ -80,39 +81,49 @@ s'arrête au probe si `fd628_gpio_stb` manque. Le vendor l'a donc modifié pour
 ce build, et la puce n'est pas un FD628 (qui exige un STB) mais un **FD650** —
 cohérent avec le nom de l'image (`..._12_FD650`) et avec le marquage du PCB.
 
-#### Correction d'une conclusion trop forte
+#### La cause : le mode de pilotage, pas les broches
 
-La mesure « PI12 = 0 en entrée pull-down » ne prouve **pas** l'absence de
-puce : un FD628 a un DIO *push-pull*, qui lit 0 même présent et alimenté. Le
-test ne vaut que pour une puce à DAT open-drain **avec** pull-up interne — le
-cas du FD655 de la H96, qui lit 1. Sur un FD650 il reste valable, mais il ne
-distingue pas « puce absente » de « puce non alimentée ».
+Les broches du DTB étaient **bonnes** du premier coup. Ce qui manquait est le
+mode électrique : le pilote vendor pilote les deux lignes en **sortie franche
+(push-pull)**, avec un `udelay(1)` par phase, alors que `fd6xx` les demandait
+en open-drain + pull-up — le réglage qui marche sur la H96. Sur la Transpeed,
+la carte n'a pas de pull-up : la ligne ne remonte jamais, la puce ne voit que
+des zéros, la dalle reste éteinte. En push-pull, elle s'allume immédiatement.
 
-#### Établi / hypothèses / non vérifié
+C'est aussi ce qui explique la mesure « PI12 = 0 en pull-down » : sans
+pull-up, cette lecture était attendue, puce présente ou non. Le test ne
+distinguait rien.
 
-**Établi** : broches déclarées PI11/PI12 ; chaîne vendor entièrement 2 fils ;
-démon `vfdsrv` sur `/dev/fd628_dev` ; LED d'état sur PH6/PH7 ; aucune trame
-essayée n'allume la dalle.
+Deuxième différence, mesurée à l'écran : **l'adresse `0x68` porte le chiffre
+de gauche** sur la Transpeed, alors que c'est celui de droite sur la H96.
+Troisième, matérielle : la dalle n'a que **quatre positions** (et pas de
+glyphe K), d'où le texte « 8618 » et non « 8K618 ».
 
-**Hypothèses**, par ordre de plausibilité :
-1. **Dalle non alimentée** — rail commuté absent du nœud DT, qui ne porte que
-   clk/dat (ni `regulator`, ni `enable`).
-2. **Révision différente** — ce DTB est celui de la référence `apollo-p17` ;
-   rien ne prouve que la carte .51 soit exactement celle-là.
-3. **Trame différente** — le 2 fils du vendor n'est ni le TWI FD650 à 9 tops
-   ni le SPI FD628 que `fd6xx` implémente.
+#### Le protocole vendor, lu au désassembleur
 
-**Non vérifié** :
-- la tension d'alimentation de la puce (aucune mesure au multimètre) ;
-- la correspondance visuelle broche/PCB sur la carte .51 ;
-- le désassemblage de `FD628_WrByte` du noyau vendor, qui donnerait la trame
-  exacte (symboles présents dans l'Image, non exploités).
+Tout le reste est **identique à la H96**, ce que le désassemblage confirme
+(Image du noyau à l'offset `0x184b000`, symboles récupérés par
+`vmlinux-to-elf`, `FD628_Write_Byte` à `0xffffffc01093a2a4`) :
 
-**Prochaine étape, dans cet ordre** : (1) mesurer VCC et GND sur la puce,
-calibré sur la H96 qui fonctionne ; (2) si VCC est absent, chercher l'enable
-dans le rootfs vendor ; (3) sinon, désassembler `FD628_WrByte` et rejouer sa
-trame exacte. Le balayage de broches reste **en dernier** : un GPIO qui
-commande un régulateur ne se sonde pas à l'aveugle.
+- START : DAT haut, CLK haut, puis DAT bas ; STOP : CLK haut puis DAT haut ;
+- octets **MSB d'abord**, **9 tops**, DAT relâché en entrée sur le 9e ;
+- `udelay(1)` par phase (0x10c7 = `__const_udelay` d'1 µs) ;
+- `fd628_dev_open` écrit `0x48` puis `0x01` ; la luminosité passe par `0x68` ;
+- `FD628_WrDisp_AddrINC` écrit `0x66` suivi des octets d'affichage et laisse
+  la puce incrémenter l'adresse — mais cette forme **n'a pas marché** sur la
+  carte, alors que l'écriture adresse par adresse (`0x68`, `0x6A`, `0x6C`,
+  `0x6E`) fonctionne. L'outil garde donc les transactions séparées.
+
+Détail qui vaut d'être noté : la police du vendor (`FD628Service.c`) donne
+`3 = 0x79` et `4 = 0x74`, qui s'affichent « E » et « h » sur cette dalle. La
+police **standard** (`3 = 0x4F`, `4 = 0x66`) donne bien « 3 » et « 4 ». Les
+constantes du vendor sont fausses pour cet écran.
+
+#### Vérification
+
+À l'écran, pas dans les journaux : « 8618 » après `nixos-rebuild switch`, puis
+**après un vrai redémarrage** (uptime 0:00, service `active`, sortie 0, eth0
+UP, MAC `02:a1:15:a7:4f:94` inchangée, 0 % de perte vers la passerelle).
 
 ### Où sont les DTBs vendor (inventaire vérifié)
 
@@ -154,6 +165,18 @@ TWI maison, 2 fils, **la puce n'ACK pas** :
   0x68 apparait a droite, « 2 » ecrit sur 0x6E apparait a gauche) ;
 - octet de donnee = `DP G F E D C B A` (bit 0 = segment A) : `0x06` = « 1 »,
   `0x5B` = « 2 », `0x7F` = « 8 ».
+
+Deux reglages diffèrent d'une carte a l'autre, et ce sont eux qui coutent une
+session quand on les suppose identiques :
+
+| Reglage | H96 | Transpeed |
+|---|---|---|
+| Mode des deux lignes | open-drain + pull-up | **push-pull** (aucun pull-up sur la carte) |
+| Sens des adresses | `0x68` = chiffre de **droite** | `0x68` = chiffre de **gauche** |
+| Nombre de positions | 5 | **4** |
+
+Les trois sont des options de l'outil (`--push-pull`, `--ltr`) ou du module
+(`nixelec.frontPanel.pushPull`, `.leftToRight`, `.text`).
 
 ## 4. Arbitrage : pilote noyau ou espace utilisateur
 
