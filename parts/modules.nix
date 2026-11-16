@@ -151,8 +151,7 @@ in
       { ... }:
       {
         imports = [
-          inputs.nixbian.nixosModules.nixbian
-          ../modules/family/sunxi64.nix
+          inputs.self.nixosModules.sunxi64
           ../modules/boards/orangepizero3.nix
         ];
       };
@@ -162,8 +161,7 @@ in
       { ... }:
       {
         imports = [
-          inputs.nixbian.nixosModules.nixbian
-          ../modules/family/sunxi64.nix
+          inputs.self.nixosModules.sunxi64
           ../modules/boards/transpeed-8k618-t.nix
         ];
       };
@@ -173,8 +171,7 @@ in
       { ... }:
       {
         imports = [
-          inputs.nixbian.nixosModules.nixbian
-          ../modules/family/sunxi64.nix
+          inputs.self.nixosModules.sunxi64
           ../modules/boards/h96-max-h618.nix
         ];
       };
