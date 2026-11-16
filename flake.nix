@@ -10,6 +10,14 @@
       url = "github:zibaone/nixbian";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    # Contrats de service matériel-agnostiques (wifi-client, ir, front-panel,
+    # emmc-root, overlay DT). La couche carte apporte les pilotes et les données.
+    nixelec-common = {
+      url = "github:zibaone/nixelec-common";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.flake-parts.follows = "flake-parts";
+    };
   };
 
   outputs =

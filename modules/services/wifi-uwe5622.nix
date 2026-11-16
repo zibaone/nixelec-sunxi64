@@ -15,7 +15,6 @@ let
   };
 in
 {
-  imports = [ ./wifi-client.nix ];
   options.nixelec.wifi = {
     enable = lib.mkEnableOption "Unisoc UWE5622 (AW859A) WiFi";
 
@@ -101,44 +100,8 @@ in
         ssid
         pskFile
         networksFile
+        powerSaveOff
         ;
-    };
-
-    systemd.services.wlan-ps-off = lib.mkIf cfg.powerSaveOff {
-      description = "Disable WiFi firmware power saving (UWE5622)";
-      wantedBy = [ "multi-user.target" ];
-      after = [ "wpa-supplicant-${cfg.interface}.service" ];
-      serviceConfig = {
-        # Type=simple: the script waits for the IPv4 address and then toggles
-        # the firmware. With oneshot, multi-user.target would wait for this
-        # loop (up to 2 min) and delay boot by as much.
-        Type = "simple";
-      };
-      script = ''
-        # cfg80211 already reports power_save=off by default, so setting only
-        # `off` is a no-op: nl80211 sees no change and never calls
-        # set_power_mgmt. Toggle on then off to force the firmware call; the
-        # measured RTT drops to about 7 ms.
-        #
-        # Wait for association, not just for the netdevice: the driver resets
-        # the power-save setting when wpa_supplicant associates, so toggling
-        # before that is lost.
-        for _ in $(seq 1 120); do
-          # The IPv4 address only appears after association and DHCP.
-          # Do not test `iw link`: on the UWE5622 it can stay silent for
-          # several minutes while power saving is active, which is exactly
-          # what prevents disabling it early enough.
-          if ${pkgs.iproute2}/bin/ip -4 addr show dev ${cfg.interface} 2>/dev/null | grep -q 'inet '; then
-            sleep 1
-            ${pkgs.iw}/bin/iw dev ${cfg.interface} set power_save on 2>/dev/null
-            sleep 1
-            ${pkgs.iw}/bin/iw dev ${cfg.interface} set power_save off 2>/dev/null && exit 0
-          fi
-          sleep 1
-        done
-        echo "${cfg.interface}: not associated after 120s; power save left unchanged" >&2
-        exit 0
-      '';
     };
   };
 }

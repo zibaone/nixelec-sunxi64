@@ -113,11 +113,21 @@ in
 
     # Driver-agnostic WPA client: wpa_supplicant + PSK rendered from a secret
     # file at boot. No driver, no firmware, no PSK in the store.
-    wifi-client = ../modules/services/wifi-client.nix;
+    # Implementation in nixelec-common; the option name is unchanged
+    # (`nixelec.wifiClient`), so this is a pure re-export.
+    wifi-client = inputs.nixelec-common.nixosModules.wifi-client;
 
     # UWE5622 WiFi: driver, firmware, wpa_supplicant. Disabled by default.
-    # Imports `wifi-client` for the supplicant part.
-    wifi-uwe5622 = ../modules/services/wifi-uwe5622.nix;
+    # The wrapper imports the common client; the module itself only provides
+    # the out-of-tree driver and its firmware.
+    wifi-uwe5622 =
+      { ... }:
+      {
+        imports = [
+          inputs.nixelec-common.nixosModules.wifi-client
+          ../modules/services/wifi-uwe5622.nix
+        ];
+      };
 
     # Allwinner SD image: U-Boot at offset 8 KiB, extlinux, DTB.
     sd-image = ../modules/image/sunxi-sd.nix;
