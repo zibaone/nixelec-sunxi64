@@ -70,10 +70,21 @@
       self.nixosModules.wifi-client
       self.nixosModules.emmc-root
       self.nixosModules.mac-from-sid
+      # Afficheur facade : meme puce 2 fils que la H96, mais deux differences
+      # mesurees a l'ecran le 2026-11-16 — la carte n'a pas de pull-up (il faut
+      # pousser les lignes en sortie franche) et l'adresse 0x68 porte le
+      # chiffre de gauche, pas de droite.
+      self.nixosModules.front-panel
       ../examples/transpeed-base.nix
       {
         nixelec.emmc.rootLabel = "nixelec-8k618";
         nixelec.macFromSid.enable = true;
+        nixelec.frontPanel.enable = true;
+        nixelec.frontPanel.clk = 267;
+        nixelec.frontPanel.dat = 268;
+        nixelec.frontPanel.pushPull = true;
+        nixelec.frontPanel.leftToRight = true;
+        nixelec.frontPanel.text = "8618";
       }
     ];
   };
