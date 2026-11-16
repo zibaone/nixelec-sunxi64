@@ -81,6 +81,7 @@
         nixelec.emmc.rootLabel = "nixelec-8k618";
         nixelec.macFromSid.enable = true;
         nixelec.frontPanel.enable = true;
+        nixelec.frontPanel.chip = "/dev/gpiochip1";
         nixelec.frontPanel.clk = 267;
         nixelec.frontPanel.dat = 268;
         nixelec.frontPanel.pushPull = true;
@@ -110,6 +111,9 @@
         nixelec.emmc.rootLabel = "nixelec-h96";
         nixelec.macFromSid.enable = true;
         nixelec.frontPanel.enable = true;
+        nixelec.frontPanel.chip = "/dev/gpiochip1";
+        nixelec.frontPanel.clk = 226;
+        nixelec.frontPanel.dat = 227;
         nixelec.frontPanel.text = "H96";
         # IR : le DTS de carte laisse `ir@7040000` en `disabled` (verifie sur
         # le DTB deploye), contrairement a la Transpeed, d'ou l'overlay.

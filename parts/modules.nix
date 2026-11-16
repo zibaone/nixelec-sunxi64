@@ -144,7 +144,7 @@ in
     # Afficheur facade 7 segments FD650/FD655 (2 fils bit-banges), en espace
     # utilisateur. Desactive par defaut : un afficheur ne doit pas pouvoir
     # casser un boot. Broches et protocole mesures : docs/affichage-facade.md.
-    front-panel = ../modules/services/front-panel.nix;
+    front-panel = inputs.nixelec-common.nixosModules.front-panel;
 
     # IR : tables, fusion, gardes et keymap dans nixelec-common ; cette couche
     # apporte le recepteur sunxi-ir et l'overlay qui active ir@7040000.
