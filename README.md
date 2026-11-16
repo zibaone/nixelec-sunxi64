@@ -16,11 +16,22 @@ consumer.
 
 | Provided | Not provided |
 |---|---|
-| nixbian kernel, DTB, U-Boot, extlinux | WiFi PSK, SSH keys, root password |
+| Kernel **built by this layer** from the nixbian Armbian export + family patches, DTB, U-Boot, extlinux | WiFi PSK, SSH keys, root password |
 | H616/H618 quirks: GPU power domain, HDMI audio, `cma` | Fleet identity and provisioning |
 | Allwinner SD image (U-Boot at 8 KiB) | Kodi, add-ons, kiosk policy (`nixelec-kiosk`) |
 | Board facts `nixelec.platform.*` (CEC driver, HDMI connector, video mode, watchdog) | Consumer-specific deployment |
 | UWE5622 driver + firmware (optional) | |
+
+## Kernel ownership (B, 2026-11-16)
+
+This layer is the **sole producer** of the sunxi64 kernel: it applies the
+Armbian series exported by nixbian, then its own family/board patches
+(`patches/kernel/`: AC300/EMAC/DTS, cedrus, VP9, cec), plus the four vendor
+directories moved from nixbian (`hdmi-audio`, `cec`, `h96-max`,
+`aic8800-kbuild`). `hardware.nixbian.extraPatches`/`extraConfig` and the
+per-board `kernelPackage = null` are transitional and are removed in favour of
+this layer's build. `nixelec-common` carries no kernel patch; `nix-v4l2-request`
+is userspace FFmpeg/Kodi; the kiosk is the service.
 
 Hardware validation is tracked separately from evaluation; see
 [`docs/verified.md`](docs/verified.md).

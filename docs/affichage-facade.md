@@ -40,6 +40,14 @@ La note « PI2/PI3 » du prompt de chantier etait donc fausse : elle venait d'un
 lecture de `0x07` comme « 8e banque ». Une erreur de banque sur un GPIO est
 exactement le risque que le chantier voulait eviter.
 
+> **Énumération des chips (2026-11-16)** : ne pas se fier à l'index
+> `/sys/class/gpio` ; `gpiodetect` tranche. Sur la H96 comme sur la Transpeed,
+> le PIO `300b000.pinctrl` (288 lignes) est `/dev/gpiochip1` ; `/dev/gpiochip0`
+> est le r_pio `7022000.pinctrl` (32 lignes). Un `fd6xx --chip /dev/gpiochip0`
+> sur la H96 échoue en `GPIO_V2_GET_LINE_IOCTL` (ligne hors du r_pio), et
+> `/sys/class/gpio/gpiochip0 -> 300b000.pinctrl` ne reflète pas l'index du
+> chardev. Vérifier avec `gpiodetect` avant de changer la donnée de carte.
+
 ### Transpeed 8K618-T — **PI11 = CLK, PI12 = DAT**, push-pull obligatoire, **résolue le 2026-11-16**
 
 Le DTB vendor du firmware stock (`H618.apollo-p17.8K618-T_100M_12_FD650`,
