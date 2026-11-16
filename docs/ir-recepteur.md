@@ -54,19 +54,23 @@ un overlay écrit ailleurs avec un `dtsFile` ne le sera pas.
 
 Options utiles :
 
+Le contrat (`remotes`, `remoteOverrides`, `extraRemotesDir`, `protocols`, la
+fusion, la keymap et la règle udev) vit dans `nixelec-common`. Cette couche
+ajoute le récepteur `sunxi-ir`, l'overlay DT et le nom d'entrée.
+
 | Option | Défaut | Rôle |
 |---|---|---|
 | `remotes` | `[]` = toutes | télécommandes activées, par nom de fichier |
 | `remoteOverrides` | `{}` | `"0x116" = "KEY_ENTER"` réaffecte, `null` neutralise |
-| `extraRemotesDir` | `null` | tables d'une couche privée, même nom = la privée gagne |
+| `extraRemotesDir` | `null` | tables d'une couche carte, publique ou privée, même nom = la supplémentaire gagne |
 | `enableDeviceTree` | `false` | overlay `&ir { status = "okay"; }` |
 | `dtCompatible` | `["allwinner,sun50i-h618"]` | `compatible` de l'overlay |
-| `inputName` | `"sunxi-ir"` | nom du device d'entrée pour la règle udev |
+| `inputName` | `"sunxi-ir"` (posé ici) | nom du device d'entrée pour la règle udev |
 | `protocols` | `["nec"]` | décodeurs passés à `ir-keytable -p` |
 
 ## 3. Plusieurs télécommandes
 
-Un fichier TOML par télécommande dans `modules/services/remotes/`. La table
+Un fichier TOML par télécommande dans `nixelec-common/modules/remotes/`. La table
 chargée au boot est la **fusion** de toutes celles activées : rc-core ne garde
 qu'un keycode par scancode, donc plusieurs télécommandes cohabitent tant
 qu'aucun scancode n'est revendiqué avec deux keycodes différents.
@@ -78,7 +82,7 @@ Ajouter une télécommande :
 dev=$(for d in /sys/class/rc/rc*; do grep -qw nec "$d/protocols" && basename "$d" && break; done)
 ir-keytable -s "$dev" -p nec -t
 
-# 2. écrire modules/services/remotes/<nom>.toml
+# 2. écrire nixelec-common/modules/remotes/<nom>.toml
 #    [[protocols]]
 #    name = "<nom>"
 #    protocol = "nec"
