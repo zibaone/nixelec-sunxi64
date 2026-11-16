@@ -156,13 +156,17 @@ static void usage(void)
 {
 	fprintf(stderr,
 		"usage: fd6xx [--chip DEV] [--clk N] [--dat N] [--brightness 0-7]\n"
-		"             [--delay NS] <commande>\n"
+		"             [--delay NS] [--push-pull] [--ltr] <commande>\n"
 		"\n"
 		"commandes:\n"
 		"  write <texte>    affiche jusqu'a 5 caracteres, de gauche a droite\n"
 		"  seg <hex>...     octets de segments bruts, de droite a gauche\n"
 		"  blank            eteint les chiffres\n"
 		"  test             allume tous les segments\n"
+		"\n"
+		"  --push-pull      sortie franche au lieu d'open-drain + pull-up\n"
+		"                   (requis par les cartes sans pull-up, Transpeed)\n"
+		"  --ltr            l'adresse 0x68 est le chiffre de gauche\n"
 		"\n"
 		"defauts : --chip /dev/gpiochip1 --clk 226 --dat 227 (H96 : PH2/PH3)\n");
 	exit(2);
@@ -172,11 +176,21 @@ int main(int argc, char **argv)
 {
 	const char *chip = "/dev/gpiochip1";
 	int clk = 226, dat = 227, brightness = 3;
-	int i, argi = 1;
+	int i, argi = 1, push_pull = 0, ltr = 0;
 
 	while (argi < argc && !strncmp(argv[argi], "--", 2)) {
 		const char *opt = argv[argi++];
-		const char *val = (argi < argc) ? argv[argi++] : NULL;
+		const char *val;
+
+		if (!strcmp(opt, "--push-pull")) {
+			push_pull = 1;
+			continue;
+		}
+		if (!strcmp(opt, "--ltr")) {
+			ltr = 1;
+			continue;
+		}
+		val = (argi < argc) ? argv[argi++] : NULL;
 
 		if (!val) {
 			fprintf(stderr, "fd6xx: %s attend une valeur\n", opt);
@@ -204,15 +218,20 @@ int main(int argc, char **argv)
 	if (gfd < 0)
 		die(chip);
 
-	/* open-drain + pull-up : jamais de haut pousse, la ligne remonte */
+	/* open-drain + pull-up : jamais de haut pousse, la ligne remonte.
+	 * push-pull : le vendor Allwinner pilote en sortie franche (les cartes
+	 * sans pull-up externe, comme la Transpeed, ne marchent que comme ca). */
 	struct gpio_v2_line_request req;
 	unsigned long long flagsets[] = {
 		GPIO_V2_LINE_FLAG_OUTPUT | GPIO_V2_LINE_FLAG_OPEN_DRAIN |
 			GPIO_V2_LINE_FLAG_BIAS_PULL_UP,
 		GPIO_V2_LINE_FLAG_OUTPUT | GPIO_V2_LINE_FLAG_OPEN_DRAIN,
+		GPIO_V2_LINE_FLAG_OUTPUT,
 	};
+	int first = push_pull ? 2 : 0;
+	int last = push_pull ? 3 : 2;
 	int chosen = -1;
-	for (i = 0; i < 2; i++) {
+	for (i = first; i < last; i++) {
 		memset(&req, 0, sizeof(req));
 		req.num_lines = 2;
 		req.offsets[0] = clk;
@@ -239,9 +258,10 @@ int main(int argc, char **argv)
 
 		if (n > MAX_GRIDS)
 			n = MAX_GRIDS;
-		/* l'adresse 0x68 est le chiffre le plus a droite */
+		/* H96 : 0x68 = chiffre le plus a droite ; Transpeed : le plus a
+		 * gauche (mesure a l'ecran). --ltr choisit le second. */
 		for (i = 0; i < n; i++)
-			grids[i] = glyph(text[n - 1 - i]);
+			grids[i] = glyph(text[ltr ? i : n - 1 - i]);
 		for (i = 0; i < MAX_GRIDS; i++)
 			write_cmd_data(ADDR_BASE + 2 * i, grids[i]);
 	} else if (!strcmp(cmd, "seg")) {
