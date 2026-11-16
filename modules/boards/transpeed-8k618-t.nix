@@ -148,4 +148,16 @@
   # La NVRAM vendor contient `macaddr=00:90:4c:c5:12:38` (adresse Broadcom de
   # remplissage), mais le firmware utilise la MAC gravée dans l'OTP du chip :
   # l'interface est apparue avec 60:21:c0:b1:2d:be. Pas de collision entre box.
+
+  # Radio mesurée le 2026-11-16 (gen 7pyxiyh) : `mmc1:0001:1` = 0x02d0:0x4334,
+  # `brcmfmac` + `brcmfmac_wcc` chargés, `wlan0` portant la MAC OTP ci-dessus,
+  # et `iw scan` qui remonte **les deux bandes** (2412/2437/2462 et
+  # 5180/5240/5500/5640 MHz). L'intégration est donc complète : ce qui manque
+  # n'est pas du code mais un usage (PSK de provisioning).
+  #
+  # Deux absences visibles dans dmesg, sans effet mesuré sur le scan :
+  # le firmware board-specific (`brcm/brcmfmac4334-sdio.transpeed,8k618-t.bin`)
+  # et le `clm_blob` — d'où « device may have limited channels available » et
+  # `country 00`. Ne pas chasser ces blobs tant qu'un défaut de canal n'est pas
+  # constaté : le générique + la NVRAM suffisent à associer.
 }
