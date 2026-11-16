@@ -44,9 +44,9 @@ let
         lib.concatMap
           (
             dir:
-            map (name: patchDir + "/" + dir + "/" + name) (
+            map (name: "${patchDir}/${dir}/${name}") (
               builtins.filter (name: builtins.match ".*\\.patch" name != null) (
-                builtins.attrNames (builtins.readDir (patchDir + "/" + dir))
+                builtins.attrNames (builtins.readDir "${patchDir}/${dir}")
               )
             )
           )
@@ -60,7 +60,7 @@ let
       # Ordre mesuré : DTS Transpeed (0002 puis 0004), VP9 avant les fences
       # cedrus, CEC après. Un chemin de source en store porte son nom, donc ne
       # pas renommer ces fichiers sans accepter un nouveau hash de noyau.
-      localPatches = map (name: patchDir + "/" + name) [
+      localPatches = map (name: "${patchDir}/${name}") [
         "0001-net-phy-add-ac300-ephy.patch"
         "0002-arm64-dts-h616-emac1-ac300.patch"
         "0003-net-stmmac-sun8i-h616-emac1.patch"
@@ -117,7 +117,6 @@ in
     # Le noyau est produit ici, plus par nixbian (modèle B).
     sunxi64 =
       {
-        config,
         lib,
         pkgs,
         ...
@@ -131,9 +130,6 @@ in
         nixelec.kernelPackage = lib.mkDefault (familyKernel {
           inherit pkgs;
         });
-        # Le module nixbian pose aussi `boot.kernelPackages` après nous ; sans
-        # cette ligne il reprend son noyau à lui et le kiosque ne voit plus les
-        # patches de la couche (garde-fou VP9/cedrus).
         # Le garde-fou HavenOS vérifie cette liste ; sous le modèle B le noyau
         # de famille porte ces patches, mais on les déclare aussi ici pour que
         # le repli nixbian et le garde-fou restent cohérents.
@@ -142,7 +138,6 @@ in
           ../patches/kernel/cedrus-wait-dst-fences.patch
           ../patches/kernel/cec-restore-phys-addr-hpd.patch
         ];
-        hardware.nixbian.kernelPackage = lib.mkForce config.nixelec.kernelPackage;
       };
 
     # Board: Orange Pi Zero 3 (H618). Le noyau de famille porte les patches
