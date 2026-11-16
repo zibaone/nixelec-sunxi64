@@ -180,7 +180,7 @@ Les trois sont des options de l'outil (`--push-pull`, `--ltr`) ou du module
 
 ## 4. Arbitrage : pilote noyau ou espace utilisateur
 
-**Retenu : espace utilisateur (`packages/fd6xx`), pour la premiere iteration.**
+**Retenu : espace utilisateur (`nixelec-common/packages/fd6xx`), pour la premiere iteration.**
 
 Le chemin noyau naturel — `i2c-gpio` sur les deux GPIO + `tm16xx_i2c`
 (compatible `fdhisi,fd650`, present dans le jeu de patches Armbian
@@ -212,8 +212,10 @@ Sur la Transpeed : rien, cf. §2.
 
 ## 6. Module
 
-`modules/services/front-panel.nix`, option `nixelec.frontPanel`, **desactivee
-par defaut**. L'unite est `oneshot` + `RemainAfterExit`, sans dependance
-`before=` sur le boot, et son script sort toujours en 0 : un afficheur ne peut
-pas empecher une carte de demarrer. Les valeurs par defaut des broches sont
-celles de la H96 (226/227) ; une carte sans afficheur laisse `enable = false`.
+`nixelec-common/modules/front-panel.nix`, option `nixelec.frontPanel`,
+**desactivee par defaut**. L'unite est `oneshot` + `RemainAfterExit`, sans
+dependance `before=` sur le boot, et son script sort toujours en 0 : un
+afficheur ne peut pas empecher une carte de demarrer. Les broches
+(`chip`, `clk`, `dat`) sont des **donnees de carte** : l'eval refuse
+`enable = true` s'il en manque une. Les valeurs mesurees sont posees dans
+`parts/configurations.nix` (H96 : 226/227 ; Transpeed : 267/268).
