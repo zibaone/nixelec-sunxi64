@@ -10,7 +10,12 @@
 # l'initrd monte le mauvais support et le boot échoue sur « Failed to start
 # Find NixOS closure » — vécu sur la Transpeed le 2026-11-15, avec la fermeture
 # pourtant bien installée.
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 {
   options.nixelec.emmc = {

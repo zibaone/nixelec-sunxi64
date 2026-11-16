@@ -11,11 +11,7 @@ let
 
   # La commande est construite ici pour que `text` puisse contenir des
   # espaces sans casser le script systemd.
-  action =
-    if cfg.text == "" then
-      "blank"
-    else
-      "write ${lib.escapeShellArg cfg.text}";
+  action = if cfg.text == "" then "blank" else "write ${lib.escapeShellArg cfg.text}";
 in
 {
   # Afficheur de facade 7 segments des boites H616/H618 (FD650/FD655).

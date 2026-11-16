@@ -98,7 +98,6 @@
     ];
   };
 
-
   # Pilote Ethernet vendor de la Transpeed, hors arbre. Construit contre le
   # noyau de la carte (qui porte les patches 0001-0004), donc hors du système :
   # le CI doit le construire et le pousser explicitement pour le cache.

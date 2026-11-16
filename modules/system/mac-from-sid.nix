@@ -24,7 +24,12 @@
 # Aucune modification du driver n'est nécessaire : la MAC est appliquée avant que
 # le réseau ne démarre, ce qui est exactement l'ordre attendu par dhcpcd et
 # systemd-networkd.
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 let
   cfg = config.nixelec.macFromSid;
@@ -87,7 +92,12 @@ in
     systemd.services.mac-from-sid = {
       description = "MAC déterministe dérivée de la SID (aucune MAC gravée sur cette carte)";
       wantedBy = [ "network-pre.target" ];
-      before = [ "network-pre.target" "dhcpcd.service" "systemd-networkd.service" "NetworkManager.service" ];
+      before = [
+        "network-pre.target"
+        "dhcpcd.service"
+        "systemd-networkd.service"
+        "NetworkManager.service"
+      ];
       # Une unité systemd n'hérite pas du PATH interactif : sans cette ligne,
       # `dd`, `sha256sum`, `cut`, `readlink` et `ip` sont introuvables au boot
       # (observé : le service échoue au démarrage et réussit à la main).
