@@ -188,6 +188,16 @@ let
       };
     };
   '';
+
+  # Compilé ici plutôt que laissé à `hardware.deviceTree.overlays` avec un
+  # `dtsFile` : `compileDTS` de nixpkgs tire `kernel.dev`
+  # (include-prefixes), sortie qui n'est pas au cache — mesuré le 2026-11-16,
+  # cela déclenche une recompilation complète du noyau. Un `.dtbo` fourni tel
+  # quel ne passe que par `applyOverlays`, qui travaille sur le DTB déjà
+  # construit.
+  dtOverlayDtbo = pkgs.runCommandLocal "ir-enable.dtbo" { nativeBuildInputs = [ pkgs.dtc ]; } ''
+    ${pkgs.dtc}/bin/dtc -@ -I dts -O dtb -o $out ${dtOverlay}
+  '';
 in
 {
   options.nixelec.ir = {
@@ -239,6 +249,11 @@ in
         Poser un overlay qui passe `ir@7040000` en `status = "okay"`. Inutile
         quand le DTS de carte active déjà le nœud (Transpeed 8K618-T) ; requis
         quand il le laisse désactivé (H96 Max H618).
+
+        L'overlay est fourni en `.dtbo` compilé à part : `compileDTS` de
+        nixpkgs, utilisé quand on passe un `dtsFile`, tire `kernel.dev` et
+        **fait recompiler le noyau**. En `.dtbo`, seuls `dtc` et `fdtoverlay`
+        tournent, sur le DTB déjà construit — quelques secondes.
       '';
     };
 
@@ -299,7 +314,7 @@ in
 
     hardware.nixbian.overlays = lib.optional cfg.enableDeviceTree {
       name = "ir-enable";
-      dtsFile = dtOverlay;
+      dtboFile = dtOverlayDtbo;
     };
 
     # La keymap est la fusion de toutes les télécommandes activées ; le nom du

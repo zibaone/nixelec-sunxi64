@@ -36,6 +36,22 @@ nixelec.ir.enableDeviceTree = true;
 # Transpeed 8K618-T : le DTS mainline active déjà `ir@7040000`, rien à faire.
 ```
 
+### Le piège de l'overlay : il peut coûter un noyau
+
+Mesuré le 2026-11-16 en activant `enableDeviceTree` sur la H96 : le build
+part en `building 'linux-7.0.14.drv'` — plusieurs heures sous émulation.
+
+Cause : `hardware.deviceTree.overlays` accepte deux formes. Avec un `dtsFile`,
+nixpkgs appelle `compileDTS`, qui a besoin de `kernel.dev`
+(`include-prefixes`) ; cette sortie n'est pas au cache, donc le noyau est
+reconstruit pour l'obtenir. Avec un `dtboFile`, il n'y a plus de compilation
+DTS : `applyOverlays` applique le binaire au DTB déjà construit avec
+`fdtoverlay`, et le build tombe à quelques secondes.
+
+Le module compile donc son `.dtbo` lui-même (`dtc -@ -I dts -O dtb`) et
+fournit `dtboFile`. C'est pour ça que `enableDeviceTree` reste bon marché ;
+un overlay écrit ailleurs avec un `dtsFile` ne le sera pas.
+
 Options utiles :
 
 | Option | Défaut | Rôle |

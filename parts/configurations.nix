@@ -112,9 +112,11 @@
         nixelec.frontPanel.enable = true;
         nixelec.frontPanel.text = "H96";
         # IR : le DTS de carte laisse `ir@7040000` en `disabled` (verifie sur
-        # le DTB deploye), contrairement a la Transpeed. L'overlay ne fait que
-        # passer le statut a `okay` : la broche PH10 est deja cablee par
-        # `ir_rx_pin` dans sun50i-h616.dtsi.
+        # le DTB deploye), contrairement a la Transpeed, d'ou l'overlay.
+        # Le module le fournit en `.dtbo` deja compile : avec un `dtsFile`,
+        # `compileDTS` de nixpkgs tire `kernel.dev` et fait recompiler le
+        # noyau (mesure le 2026-11-16) ; en `.dtbo`, seuls dtc et fdtoverlay
+        # tournent sur le DTB deja construit.
         nixelec.ir.enable = true;
         nixelec.ir.enableDeviceTree = true;
       }
