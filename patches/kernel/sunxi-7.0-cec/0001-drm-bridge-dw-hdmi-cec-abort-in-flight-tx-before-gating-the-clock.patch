@@ -1,0 +1,71 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: zibao <zibaone@proton.me>
+Date: Mon, 26 Oct 2026 19:00:00 +0100
+Subject: drm: bridge: dw-hdmi-cec: abort in-flight TX before gating the clock
+
+The CEC block lives behind CECCLK (HDMI_MC_CLKDIS bit 5).  adap_disable()
+masked the interrupts and gated that clock without ever aborting a frame
+still in flight, and adap_enable() then wrote CEC_CTRL/CEC_STAT/CEC_LOCK
+*before* ungating the clock.  A frame interrupted by a disable stays
+latched in the controller: the CEC line is held low, every later transfer
+completes with CEC_STAT_ERROR_INIT (tx_status=0x0030 in cec-adap), and the
+adapter can never claim a logical address again.
+
+Measured on an Orange Pi Zero 3 (H618, kernel 7.0.14) with a burst of
+plug/plugout/plug events on the HDMI input: the physical address came
+back, the logical address never did.  Three polls per address failed with
+tx_status=0x0030, cec-adap gave up, and CEC stayed dead until the module
+was reloaded (or the board rebooted).  Between two bursts the adapter
+logged 36 and 92 transmit errors respectively.
+
+Abort the frame before gating the clock, clear the status latch, and move
+the enable-path register writes after the clock is ungated.  dw-hdmi-qp
+already writes its CEC registers after clearing CEC_SWDISABLE.
+
+Signed-off-by: zibao <zibaone@proton.me>
+Link: https://github.com/zibaone/nixbian
+---
+--- a/drivers/gpu/drm/bridge/synopsys/dw-hdmi-cec.c
++++ b/drivers/gpu/drm/bridge/synopsys/dw-hdmi-cec.c
+@@ -196,6 +196,19 @@
+ 	struct dw_hdmi_cec *cec = cec_get_drvdata(adap);
+ 
+ 	if (!enable) {
++		/*
++		 * Abort any transmission still in flight before gating the CEC
++		 * clock.  Gating the clock in the middle of a frame leaves the
++		 * controller driving the CEC line low: every later transfer then
++		 * completes with CEC_STAT_ERROR_INIT, the adapter never claims
++		 * its logical address again and CEC stays dead until the next
++		 * boot.  Observed after a HPD burst (plug/plugout/plug within
++		 * 1.2 s) while a logical address poll was in flight.
++		 */
++		dw_hdmi_write(cec, 0, HDMI_CEC_CTRL);
++		dw_hdmi_write(cec, ~0, HDMI_IH_CEC_STAT0);
++		cec->tx_done = false;
++
+ 		dw_hdmi_write(cec, ~0, HDMI_CEC_MASK);
+ 		dw_hdmi_write(cec, ~0, HDMI_IH_MUTE_CEC_STAT0);
+ 		dw_hdmi_write(cec, 0, HDMI_CEC_POLARITY);
+@@ -204,14 +217,19 @@
+ 	} else {
+ 		unsigned int irqs;
+ 
++		/*
++		 * Ungate the CEC clock first: CEC_CTRL/CEC_STAT/CEC_LOCK are
++		 * part of the CEC block and cannot be relied on while CECCLK
++		 * is disabled.  dw-hdmi-qp follows the same order.
++		 */
++		cec->ops->enable(cec->hdmi);
++
+ 		dw_hdmi_write(cec, 0, HDMI_CEC_CTRL);
+ 		dw_hdmi_write(cec, ~0, HDMI_IH_CEC_STAT0);
+ 		dw_hdmi_write(cec, 0, HDMI_CEC_LOCK);
+ 
+ 		dw_hdmi_cec_log_addr(cec->adap, CEC_LOG_ADDR_INVALID);
+ 
+-		cec->ops->enable(cec->hdmi);
+-
+ 		irqs = CEC_STAT_ERROR_INIT | CEC_STAT_NACK | CEC_STAT_EOM |
+ 		       CEC_STAT_ARBLOST | CEC_STAT_DONE;
+ 		dw_hdmi_write(cec, irqs, HDMI_CEC_POLARITY);

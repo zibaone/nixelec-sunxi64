@@ -1,0 +1,41 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: zibao <zibaone@proton.me>
+Date: Sat, 24 Oct 2026 03:30:00 +0200
+Subject: arm64: dts: sun50i-h616: add #sound-dai-cells to the HDMI node
+
+The DW-HDMI controller is an ASoC codec provider: a machine node that
+references it with `sound-dai = <&hdmi>` needs `#sound-dai-cells` on the
+target, otherwise of_parse_phandle_with_args() fails and the sunxi
+machine driver (allwinner,sunxi-snd-mach) falls back to snd-soc-dummy —
+the card comes up, but every sample is dropped.
+
+Observed on Orange Pi Zero 3 (H618), kernel 7.0.14:
+
+  OF: /soc/ahub1_mach/soundcard-mach,codec: could not get #sound-dai-cells
+      for /soc/hdmi@6000000
+  /proc/asound/card1/pcm0p/info
+  id: ahub_plat-snd-soc-dummy-dai snd-soc-dummy-dai-0
+
+The property is set at the SoC level, like the H6 node gets it from the
+hdmi-audio patch set (0010-arm64-dts-allwinner-h6-Add-hdmi-sound-card):
+every H616/H618 board that enables `&hdmi` needs it, and the node itself
+is introduced by 0042-arm64-dts-allwinner-h616-Add-display-pipeline,
+which never carried it.
+
+Signed-off-by: zibao <zibaone@proton.me>
+---
+ arch/arm64/boot/dts/allwinner/sun50i-h616.dtsi | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h616.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h616.dtsi
+index 111111111111..222222222222 100644
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h616.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h616.dtsi
+@@ -1081,6 +1081,7 @@
+ 		};
+ 
+ 		hdmi: hdmi@6000000 {
++			#sound-dai-cells = <0>;
+ 			compatible = "allwinner,sun50i-h616-dw-hdmi",
+ 				     "allwinner,sun50i-h6-dw-hdmi";
+ 			reg = <0x06000000 0x10000>;

@@ -1,0 +1,111 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: zibao <zibaone@proton.me>
+Date: Mon, 26 Oct 2026 19:00:00 +0100
+Subject: drm: bridge: dw-hdmi: re-probe the connector when the EDID read fails
+
+drm_helper_hpd_irq_event() only reports the connect/disconnect event; it
+does not re-read the EDID, and the driver does not either.  After a burst
+of HPD edges the last get_modes() can run while the sink is still powering
+its HDMI input: the DDC read fails, drm_edid_connector_update() resets
+display_info, source_physical_address becomes CEC_PHYS_ADDR_INVALID and the
+CEC notifier is told to invalidate the address.  Nothing re-probes, so the
+physical address stays f.f.f.f and no logical address can be claimed until
+userspace does another modeset.
+
+Measured on an Orange Pi Zero 3 (H618, kernel 7.0.14), five plug/plugout
+cycles: connector "connected", cec-ctl reports Physical Address f.f.f.f,
+Logical Address Mask 0x0000; restarting Kodi (one modeset) immediately
+restores 3.0.0.0 and LA 1.
+
+Schedule a bounded re-probe (500 ms, 1 s, 2 s, 4 s) from get_modes() when
+the EDID read failed while HPD is high.  The counter is reset by a
+successful read, by a disconnect, and the work is cancelled on remove().
+
+Signed-off-by: zibao <zibaone@proton.me>
+Link: https://github.com/zibaone/nixbian
+---
+--- a/drivers/gpu/drm/bridge/synopsys/dw-hdmi.c
++++ b/drivers/gpu/drm/bridge/synopsys/dw-hdmi.c
+@@ -199,6 +199,9 @@
+ 	enum drm_connector_status last_connector_result;
+ 	struct extcon_dev *extcon;
+ 	struct notifier_block extcon_nb;
++
++	struct delayed_work edid_retry_work;
++	unsigned int edid_retry_count;
+ };
+ 
+ const struct dw_hdmi_plat_data *dw_hdmi_to_plat_data(struct dw_hdmi *hdmi)
+@@ -2525,6 +2528,42 @@
+ 	return dw_hdmi_detect(hdmi);
+ }
+ 
++/*
++ * The DRM HPD helper only reports the connect/disconnect event; it does not
++ * re-read the EDID.  dw_hdmi_connector_get_modes() therefore runs when
++ * userspace asks for a probe, and if the sink is not ready at that moment (a
++ * burst of plug/plugout/plug, or a TV that is still powering its HDMI input)
++ * the read fails, display_info.source_physical_address stays invalid, and CEC
++ * never claims a logical address.  Retry the probe from the kernel a few
++ * times instead of depending on userspace to do it again.
++ */
++static void dw_hdmi_edid_retry_work(struct work_struct *work)
++{
++	struct dw_hdmi *hdmi = container_of(to_delayed_work(work),
++					    struct dw_hdmi, edid_retry_work);
++
++	if (!hdmi->bridge.dev)
++		return;
++
++	if (dw_hdmi_detect(hdmi) != connector_status_connected) {
++		hdmi->edid_retry_count = 0;
++		return;
++	}
++
++	drm_helper_probe_single_connector_modes(&hdmi->connector, 0, 0);
++}
++
++static void dw_hdmi_schedule_edid_retry(struct dw_hdmi *hdmi)
++{
++	static const unsigned int delays_ms[] = { 500, 1000, 2000, 4000 };
++
++	if (!hdmi->bridge.dev || hdmi->edid_retry_count >= ARRAY_SIZE(delays_ms))
++		return;
++
++	schedule_delayed_work(&hdmi->edid_retry_work,
++			      msecs_to_jiffies(delays_ms[hdmi->edid_retry_count++]));
++}
++
+ static int dw_hdmi_connector_get_modes(struct drm_connector *connector)
+ {
+ 	struct dw_hdmi *hdmi = container_of(connector, struct dw_hdmi,
+@@ -2534,6 +2573,11 @@
+ 
+ 	drm_edid = dw_hdmi_edid_read(hdmi, connector);
+ 
++	if (drm_edid)
++		hdmi->edid_retry_count = 0;
++	else if (dw_hdmi_detect(hdmi) == connector_status_connected)
++		dw_hdmi_schedule_edid_retry(hdmi);
++
+ 	drm_edid_connector_update(connector, drm_edid);
+ 	cec_notifier_set_phys_addr(hdmi->cec_notifier,
+ 				   connector->display_info.source_physical_address);
+@@ -3398,6 +3442,8 @@
+ 	hdmi->mc_clkdis = 0x7f;
+ 	hdmi->last_connector_result = connector_status_disconnected;
+ 
++	INIT_DELAYED_WORK(&hdmi->edid_retry_work, dw_hdmi_edid_retry_work);
++
+ 	mutex_init(&hdmi->mutex);
+ 	mutex_init(&hdmi->audio_mutex);
+ 	mutex_init(&hdmi->cec_notifier_mutex);
+@@ -3667,6 +3713,8 @@
+ {
+ 	extcon_unregister_notifier_all(hdmi->extcon, &hdmi->extcon_nb);
+ 
++	cancel_delayed_work_sync(&hdmi->edid_retry_work);
++
+ 	drm_bridge_remove(&hdmi->bridge);
+ 
+ 	if (hdmi->audio && !IS_ERR(hdmi->audio))

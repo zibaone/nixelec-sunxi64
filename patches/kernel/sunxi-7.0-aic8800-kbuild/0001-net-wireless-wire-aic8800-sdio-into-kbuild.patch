@@ -1,0 +1,31 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: zibao <zibaone@proton.me>
+Date: Sun, 16 Nov 2026 12:00:00 +0100
+Subject: [PATCH] net: wireless: wire aic8800_sdio into kbuild
+
+The Armbian 3401 patch adds drivers/net/wireless/aic8800_sdio/ but does not
+touch drivers/net/wireless/{Kconfig,Makefile}. Kbuild therefore never descends
+into the directory and no .ko is produced, even though the family config sets
+CONFIG_AIC_SDIO_WLAN_SUPPORT=y. Add the two hook lines.
+
+Measured on the H96 Max H618 (AIC8800D80, SDIO 0xc8a1:0x0082): the patched tree
+contained the directory but the modules output had no aic8800_*.ko.
+
+Signed-off-by: zibao <zibaone@proton.me>
+---
+--- a/drivers/net/wireless/Kconfig
++++ b/drivers/net/wireless/Kconfig
+@@ -40,3 +40,5 @@
+ source "drivers/net/wireless/virtual/Kconfig"
+ 
++source "drivers/net/wireless/aic8800_sdio/Kconfig"
++
+ endif # WLAN
+--- a/drivers/net/wireless/Makefile
++++ b/drivers/net/wireless/Makefile
+@@ -23,3 +23,5 @@
+ obj-$(CONFIG_WLAN_VENDOR_ZYDAS) += zydas/
+ 
+ obj-$(CONFIG_WLAN) += virtual/
++
++obj-$(CONFIG_AIC_SDIO_WLAN_SUPPORT) += aic8800_sdio/

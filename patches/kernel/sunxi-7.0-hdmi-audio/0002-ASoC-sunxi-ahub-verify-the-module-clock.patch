@@ -1,0 +1,125 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: zibao <zibaone@proton.me>
+Date: Sat, 24 Oct 2026 09:30:00 +0200
+Subject: ASoC: sunxi-ahub: retune the audio PLL so the module clock can reach
+ rate * 1024
+
+The AHUB derives LRCK from the module clock (clk_audio_hub) by a fixed factor
+of 1024, so the stream only runs at the right speed when that clock is exactly
+rate * 1024 - 49.152 MHz for 48 kHz, which sunxi_ahub_dai_set_pll() requests
+(freq_out / 2 with freq_out = 24576000 * pll-fs).
+
+On sun50i-h616 the module clock is an MUX+DIV of the audio PLL whose divider
+is a power of two (/1../8), so from the 688 MHz PLL the reachable values are
+86, 43, 21.5 MHz - never 49.152. clk_set_rate() rounds to the nearest of them
+and returns 0: the driver believes it got 49.152 MHz while the hardware runs
+at 43 MHz (688/16), and the whole stream plays 14.3 % slow (43/49.152 = 0.875,
+about -2.3 semitones).
+
+Measured on Orange Pi Zero 3 (7.0.14), during playback:
+  /proc/asound/card1/pcm0p/info  ->  ahub_plat-i2s-hifi i2s-hifi-0 (healthy)
+  clk_summary                    ->  audio-hub = 43.000.000, requested 49.152.000
+  user report                    ->  voice is low and the video runs slow
+
+Because the divider cannot represent the wanted value, the only lever is the
+PLL: make it rate * 1024 * 2^k so the divider lands on rate * 1024. For 48 kHz
+that is 786.432 MHz, giving 49.152 MHz after /16; the integer-N PLL settles on
+786 MHz, i.e. 49.125 MHz - 0.055 %, about one cent.
+
+The helper tries the widest multiplier first, accepts the first result within
+0.1 %, restores the original clock tree when nothing fits, and always reads
+back what the hardware really has instead of trusting the request. A detuned
+stream is reported loudly but still played: silence would be worse.
+
+Signed-off-by: zibao <zibaone@proton.me>
+---
+ sound/soc/sunxi_v2/snd_sunxi_ahub.c | 70 +++++++++++++++++++++++++++++++++++---
+ 1 file changed, 67 insertions(+), 3 deletions(-)
+
+diff --git a/sound/soc/sunxi_v2/snd_sunxi_ahub.c b/sound/soc/sunxi_v2/snd_sunxi_ahub.c
+index 111111111111..333333333333 100644
+--- a/sound/soc/sunxi_v2/snd_sunxi_ahub.c
++++ b/sound/soc/sunxi_v2/snd_sunxi_ahub.c
+@@ -78,6 +78,73 @@
+        return 0;
+ }
+ 
++/*
++ * LRCK is derived from the module clock by a fixed factor of 1024: the stream
++ * only runs at the right speed when the module clock is exactly rate * 1024
++ * (49.152 MHz at 48 kHz). On sun50i-h616 the module clock is an MUX+DIV of the
++ * audio PLL whose divider is a power of two (/1../8), so 49.152 MHz cannot be
++ * requested from a 688 MHz PLL at all: the closest it can do is 688/16 = 43 MHz
++ * (-14.3 %, about -2.3 semitones), and clk_set_rate() still returns 0.
++ *
++ * The only lever is the PLL itself: make it rate * 1024 * 2^k, then the divider
++ * lands on rate * 1024. For 48 kHz that is 786.432 MHz (/16 -> 49.152 MHz); the
++ * integer-N PLL settles at 786 MHz, i.e. 49.125 MHz, 0.055 % or one cent.
++ * Try the widest multiplier first, accept the first result within 0.1 %, and
++ * read back what the hardware really got instead of trusting the request.
++ */
++#define AHUB_CLK_TOLERANCE_DIV	1000	/* 0.1 % */
++
++static unsigned long sunxi_ahub_clk_err(unsigned long got, unsigned long want)
++{
++	return got > want ? got - want : want - got;
++}
++
++static int sunxi_ahub_module_clk_set(struct clk *clk, unsigned long wanted)
++{
++	struct clk *parent, *pll;
++	unsigned long got, pll_rate;
++	int shift;
++
++	if (clk_set_rate(clk, wanted))
++		return -EINVAL;
++
++	got = clk_get_rate(clk);
++	if (got && sunxi_ahub_clk_err(got, wanted) * AHUB_CLK_TOLERANCE_DIV <= wanted)
++		return 0;
++
++	/* The divider is quantised: retune the PLL the module clock derives from. */
++	parent = clk_get_parent(clk);
++	pll = parent ? clk_get_parent(parent) : NULL;
++	if (!pll)
++		goto detuned;
++
++	pll_rate = clk_get_rate(pll);
++	for (shift = 4; shift >= 1; shift--) {
++		if (clk_set_rate(pll, wanted << shift))
++			continue;
++		if (clk_set_rate(clk, wanted))
++			continue;
++		got = clk_get_rate(clk);
++		if (got &&
++		    sunxi_ahub_clk_err(got, wanted) * AHUB_CLK_TOLERANCE_DIV <= wanted) {
++			SND_LOG_DEBUG(HLOG, "clk_module: %lu Hz via pll x%d (%lu Hz)\n",
++				      got, 1 << shift, clk_get_rate(pll));
++			return 0;
++		}
++	}
++
++	/* Leave the clock tree as we found it before reporting the failure. */
++	clk_set_rate(pll, pll_rate);
++	clk_set_rate(clk, wanted);
++
++detuned:
++	got = clk_get_rate(clk);
++	SND_LOG_ERR(HLOG,
++		    "clk_module: wanted %lu Hz, got %lu Hz — LRCK is not 1024x the sample rate, the stream will be detuned\n",
++		    wanted, got);
++	return 0;   /* keep playing: silence would be worse than a detuned stream */
++}
++
+ static int sunxi_ahub_dai_set_pll(struct snd_soc_dai *dai,
+                                  int pll_id, int source,
+                                  unsigned int freq_in, unsigned int freq_out)
+@@ -114,7 +181,7 @@
+                        return -EINVAL;
+                }
+        }
+-       if (clk_set_rate(clk_info->clk_module, freq_out / 2)) {
++       if (sunxi_ahub_module_clk_set(clk_info->clk_module, freq_out / 2)) {
+                SND_LOG_ERR(HLOG, "freq : %u module clk unsupport\n", freq_out);
+                return -EINVAL;
+        }

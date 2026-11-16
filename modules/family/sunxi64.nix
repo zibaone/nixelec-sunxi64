@@ -14,9 +14,8 @@ in
     type = lib.types.nullOr lib.types.package;
     default = null;
     description = ''
-      Kernel to use. `null` lets nixbian build the per-board kernel
-      (buildKernel + board patches). A nixbian family package reproduces
-      the reference deployment and shares its store paths.
+      Kernel to use. The family kernel built by this layer (model B) is the
+      default; `null` falls back to nixbian's per-board kernel for bring-up.
     '';
   };
 
@@ -108,6 +107,10 @@ in
         family = lib.mkDefault "sunxi64";
         kernelVendor = lib.mkDefault "edge";
         configMode = lib.mkDefault "armbian";
+        # Modèle B : les patches vendor sont appliqués par le noyau de
+        # famille construit ici. La liste nixbian ne doit plus être évaluée
+        # (elle référence des répertoires qui ont déménagé).
+        extraPatches = lib.mkForce [ ];
         excludePatchPatterns = [
           ".*armbian-config.*"
           ".*display-logo.*"

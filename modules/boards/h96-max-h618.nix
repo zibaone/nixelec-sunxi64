@@ -13,8 +13,8 @@
   # U-Boot amont pour cette carte : le build utilise
   # `transpeed-8k618-t_defconfig` (même SoC, même AXP1530, même DDR3-648), qui
   # a amorcé cette carte en RAM depuis le FEL puis depuis la eMMC. Le DTS est
-  # fourni par le patch nixbian `kernel/sunxi-7.0-h96-max` — la carte n'a
-  # aucun DTS amont.
+  # fourni par le patch de la couche famille
+  # `patches/kernel/sunxi-7.0-h96-max` — la carte n'a aucun DTS amont.
   #
   # Mesuré sur la carte (boot0 UART, FDT vendor, boot NixOS depuis la eMMC) :
   # PMIC AXP1530 (= AXP313a), DDR3-1333 @648 MHz, 2 Gio, eMMC 15 028 Mo sur
@@ -25,49 +25,10 @@
   hardware.nixbian.board = lib.mkDefault "h96-max-h618";
   hardware.nixbian.kernelVendor = lib.mkDefault "edge";
 
-  # Ethernet : même chaîne que la Transpeed — le pilote retenu est celui du
-  # vendor, hors arbre (`packages/sunxi-gmac`). La variante mainline
-  # `dwmac-sun8i` reçoit bien les trames sur la Transpeed mais reste inerte
-  # ici : le nœud `emac1` de notre DTS porte
-  # `compatible = "allwinner,sunxi-gmac"`. Elle reste en module parce que la
-  # couche nixbian la liste et que l'élagage échoue sur un module absent.
-  #
-  # `CONFIG_AC300_PHY=y` : le driver PHY doit être enregistré avant le probe
-  # du MAC, sinon `genphy` s'attache au PHY et n'en décroche plus.
-  # `CONFIG_MODULE_ALLOW_BTF_MISMATCH=y` : les modules hors arbre sont
-  # compilés par un outillage dont le BTF diffère du noyau ; sans lui le
-  # noyau refuse de les charger (`failed to validate module BTF: -22`).
-  # `CONFIG_PWM_SUNXI_ENHANCE=m` : le PWM mainline ne gère pas le H616 et
-  # c'est le driver vendor qui fabrique le 24 MHz du PHY via `pwm-clock`.
-  #
-  # Patches 0001 et 0003 seulement : 0002 et 0004 ne touchent que le DTS de la
-  # Transpeed, que notre DTS remplace.
-  # 0004 : backport du driver xpowers AC200/AC300 fusionne en 7.4 (acx00.c,
-  # ac300.c, ac200.c + binding package). Deux ecarts d'API mesures contre
-  # 7.0.14 (devm_kzalloc_obj, phy_driver.disable_autonomous_eee). Il coexiste
-  # avec le driver vendorise 0001 : c'est le DT qui choisit lequel se lie.
-  hardware.nixbian.extraPatches = [
-    ../../patches/kernel/0001-net-phy-add-ac300-ephy.patch
-    ../../patches/kernel/0003-net-stmmac-sun8i-h616-emac1.patch
-    ../../patches/kernel/0004-net-phy-xpowers-acx00-backport.patch
-    # Horloge EPHY : le manuel H616 (§3.3.5.86) decrit 0x970 comme deux portes
-    # dont la source est PLL_PERI0/24 (600/24 = 25 MHz). Le mainline la declare
-    # enfant de ahb3 (200 MHz) : la PHY est horlogee 8x trop vite, le lien
-    # tombe a 10 Mbit/s et les trames longues arrivent corrompues alors que le
-    # numerique est sain.
-    ../../patches/kernel/0005-clk-sunxi-ng-emac25m-from-pll-periph0.patch
-  ];
-  hardware.nixbian.extraConfig = lib.mkAfter ''
-    CONFIG_AC300_PHY=y
-    CONFIG_XPOWERS_ACX00_PHY=m
-    CONFIG_AW_GMAC=m
-    CONFIG_AW_GMAC_MDIO=m
-    CONFIG_AW_EPHY=m
-    CONFIG_DWMAC_SUN8I=m
-    CONFIG_MODULE_ALLOW_BTF_MISMATCH=y
-    CONFIG_PWM_SUNXI_ENHANCE=m
-  '';
-
+  # Ethernet : le noyau de famille (parts/modules.nix) porte déjà les patches
+  # AC300/EMAC1 et les CONFIG_AC300_PHY/AW_GMAC/PWM_SUNXI_ENHANCE. La carte ne
+  # garde ici que les modules hors arbre et leur ordre de chargement : le PWM
+  # fabrique l'horloge du PHY, puis le bus MDIO, puis le MAC.
   # Ordre mesuré sur la Transpeed : le PWM fabrique l'horloge du PHY, puis le
   # bus MDIO, puis le MAC. Dans le désordre le PHY tombe sur `genphy`.
   boot.extraModulePackages = [

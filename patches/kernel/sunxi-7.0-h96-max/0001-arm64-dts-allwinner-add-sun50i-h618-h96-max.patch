@@ -1,0 +1,330 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: zibao <zibaone@proton.me>
+Date: Fri, 13 Nov 2026 10:00:00 +0100
+Subject: arm64: dts: allwinner: add H96 Max H618
+
+The H96 Max H618 is an H618 TV box with no SD slot: the eMMC is the only
+storage, and it is the only thing the BROM will boot.  It shares the SoC,
+the AXP1530 (AXP313a) PMIC, the DDR3-1333 648 MHz memory and the 8-bit eMMC
+of the Transpeed 8K618-T, but differs where it matters:
+
+  - no SD slot: mmc0 must stay disabled, otherwise the kernel waits for a
+    card that does not exist (~1 s and a -110 at every boot);
+  - the eMMC is soldered for HS-SDR52 at 50 MHz (vendor boot0 log, two
+    boots).  The Transpeed DTS declares 150 MHz + mmc-hs200-1_8v, which the
+    part does not take: reads fail and the root filesystem does not mount.
+    No HS200 here, max-frequency at 50 MHz;
+  - WiFi is an AIC8800 on SDIO1 (wlan_regon = PG18, hostwake = PG15), not a
+    Broadcom part;
+  - the RJ45 goes to EMAC1 through the co-packaged AC300 PHY, which answers
+    at MDIO address 0x10 (vendor FDT), not 0.  24 MHz comes from PWM
+    channel 5;
+  - the USB-A port wired to the OTG controller is used as a host port on the
+    bench, so usbotg is declared host.
+
+Measured on the board with a vendor FDT dump, the vendor boot0 UART log and
+a NixOS boot from the eMMC.  Ethernet delay values (tx-delay, rx-delay,
+syscfg-value) are inherited from the Transpeed board and are NOT measured on
+this one yet.
+
+Signed-off-by: zibao <zibaone@proton.me>
+---
+ arch/arm64/boot/dts/allwinner/Makefile | 1 +
+ arch/arm64/boot/dts/allwinner/sun50i-h618-h96-max.dts | 277 +++++++++++++++++++++++++++++++++++
+ 2 files changed, 278 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/allwinner/Makefile b/arch/arm64/boot/dts/allwinner/Makefile
+--- a/arch/arm64/boot/dts/allwinner/Makefile
++++ b/arch/arm64/boot/dts/allwinner/Makefile
+@@ -50,7 +50,8 @@
+ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h618-orangepi-zero2w.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h618-orangepi-zero3.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h618-transpeed-8k618-t.dtb
++dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h618-h96-max.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h618-yuzukihd-chameleon.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h700-anbernic-rg35xx-2024.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h700-anbernic-rg35xx-h.dtb
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h618-h96-max.dts b/arch/arm64/boot/dts/allwinner/sun50i-h618-h96-max.dts
+new file mode 100644
+--- /dev/null
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h618-h96-max.dts
+@@ -0,0 +1,278 @@
++// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
++/*
++ * H96 Max H618 — carte sans slot SD, eMMC uniquement.
++ *
++ * Dérivé de sun50i-h618-transpeed-8k618-t.dts (même PMIC AXP313a, même DDR3
++ * 648 MHz, même eMMC 8 bits, même SDIO WiFi), corrigé par les mesures prises
++ * sur la FDT vendor (vendor-fdt.dts) et le boot0 UART :
++ *
++ *   - PMIC      : AXP1530 (= AXP313a)
++ *   - DRAM      : DDR3-1333 @648 MHz, 2 Gio
++ *   - eMMC      : 15 028 Mo sur mmc2, 8 bits, HS-SDR52 (pas de HS200 mesuré)
++ *   - WiFi      : AIC8800 en SDIO1, wlan_regon = PG18, hostwake = PG15
++ *   - Ethernet  : EMAC1 + PHY AC300 co-packagé, MDIO 0x10, RMII 100 Mbit
++ *   - Pas de slot SD : mmc0 laissé désactivé
++ *   - LEDs      : pilote à registre à décalage sur PH2/PH3 (hors mainline, non
++ *                 déclaré : cosmétique, un mauvais GPIO pend la carte)
++ *
++ * Le port USB du câble A-A est l'OTG (usbc0 vendor, `usb_port_type = 1`).
++ * Il est déclaré en `host` ici : c'est le mode utile au banc (clé USB) et
++ * celui validé en U-Boot.
++ */
++
++/dts-v1/;
++
++#include "sun50i-h616.dtsi"
++#include "sun50i-h616-cpu-opp.dtsi"
++
++#include <dt-bindings/gpio/gpio.h>
++#include <dt-bindings/interrupt-controller/arm-gic.h>
++
++/ {
++	model = "H96 Max H618";
++	compatible = "h96,h96-max-h618", "allwinner,sun50i-h618";
++
++	aliases {
++		serial0 = &uart0;
++	};
++
++	chosen {
++		stdout-path = "serial0:115200n8";
++	};
++
++	reg_vcc5v: vcc5v {
++		/* 5 V du bloc secteur, direct */
++		compatible = "regulator-fixed";
++		regulator-name = "vcc-5v";
++		regulator-min-microvolt = <5000000>;
++		regulator-max-microvolt = <5000000>;
++		regulator-always-on;
++	};
++
++	reg_vcc3v3: vcc3v3 {
++		compatible = "regulator-fixed";
++		regulator-name = "vcc-3v3";
++		regulator-min-microvolt = <3300000>;
++		regulator-max-microvolt = <3300000>;
++		regulator-always-on;
++	};
++
++	wifi_pwrseq: pwrseq {
++		compatible = "mmc-pwrseq-simple";
++		clocks = <&rtc CLK_OSC32K_FANOUT>;
++		clock-names = "ext_clock";
++		pinctrl-0 = <&x32clk_fanout_pin>;
++		pinctrl-names = "default";
++		reset-gpios = <&pio 6 18 GPIO_ACTIVE_LOW>; /* PG18 = wlan_regon */
++	};
++
++	/* 24 MHz du PHY AC300, fabriqués par le canal 5 du PWM (PHY interne). */
++	ac300_pwm_clk: ac300-clk {
++		compatible = "pwm-clock";
++		#clock-cells = <0>;
++		clock-frequency = <2000000>;   /* 500 ns : PWM_PERIOD_NS du BSP, correctif Armbian */
++		pwms = <&pwm 5 500 0>;         /* a 42 ns (24 MHz) la PHY etait 10x trop vite */
++	};
++};
++
++&codec {
++	allwinner,audio-routing = "Line Out", "LINEOUT";
++	status = "okay";
++};
++
++&cpu0 {
++	cpu-supply = <&reg_dcdc2>;
++};
++
++/*
++ * Pas de slot SD sur cette carte : mmc0 reste désactivé, sinon le noyau
++ * attend une carte absente (`-110` au probe, 1 s perdue par boot).
++ */
++&mmc0 {
++	status = "disabled";
++};
++
++/* SDIO1 : AIC8800. Le vendor déclare `wlan_busnum = 1`. */
++&mmc1 {
++	vmmc-supply = <&reg_dldo1>;
++	vqmmc-supply = <&reg_aldo1>;
++	mmc-pwrseq = <&wifi_pwrseq>;
++	bus-width = <4>;
++	non-removable;
++	status = "okay";
++
++	sdio_wifi: wifi@1 {
++		reg = <1>;
++	};
++};
++
++/* eMMC. Pas de HS200 déclaré : le boot0 annonce HSSDR52 50 MHz. */
++&mmc2 {
++	vmmc-supply = <&reg_dldo1>;
++	vqmmc-supply = <&reg_aldo1>;
++	bus-width = <8>;
++	non-removable;
++	cap-mmc-hw-reset;
++	mmc-ddr-1_8v;
++	status = "okay";
++};
++
++&ehci0 { status = "okay"; };
++&ehci1 { status = "okay"; };
++&ehci2 { status = "okay"; };
++&ehci3 { status = "okay"; };
++&ohci0 { status = "okay"; };
++&ohci1 { status = "okay"; };
++&ohci2 { status = "okay"; };
++&ohci3 { status = "okay"; };
++
++&r_i2c {
++	status = "okay";
++
++	axp313: pmic@36 {
++		compatible = "x-powers,axp313a";
++		reg = <0x36>;
++		#interrupt-cells = <1>;
++		interrupt-controller;
++
++		vin1-supply = <&reg_vcc5v>;
++		vin2-supply = <&reg_vcc5v>;
++		vin3-supply = <&reg_vcc5v>;
++
++		regulators {
++			reg_aldo1: aldo1 {
++				regulator-always-on;
++				regulator-min-microvolt = <1800000>;
++				regulator-max-microvolt = <1800000>;
++				regulator-name = "vcc-1v8-pll";
++			};
++
++			reg_dldo1: dldo1 {
++				regulator-always-on;
++				regulator-min-microvolt = <3300000>;
++				regulator-max-microvolt = <3300000>;
++				regulator-name = "vcc-3v3-io-mmc";
++			};
++
++			reg_dcdc1: dcdc1 {
++				regulator-always-on;
++				regulator-min-microvolt = <810000>;
++				regulator-max-microvolt = <990000>;
++				regulator-name = "vdd-gpu-sys";
++			};
++
++			reg_dcdc2: dcdc2 {
++				regulator-always-on;
++				regulator-min-microvolt = <810000>;
++				regulator-max-microvolt = <1100000>;
++				regulator-name = "vdd-cpu";
++			};
++
++			reg_dcdc3: dcdc3 {
++				regulator-always-on;
++				regulator-min-microvolt = <1360000>;
++				regulator-max-microvolt = <1360000>;
++				regulator-name = "vdd-dram";
++			};
++		};
++	};
++};
++
++&pio {
++	vcc-pc-supply = <&reg_aldo1>;
++	vcc-pg-supply = <&reg_dldo1>;
++	vcc-ph-supply = <&reg_dldo1>;
++	vcc-pi-supply = <&reg_dldo1>;
++};
++
++&uart0 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&uart0_ph_pins>;
++	status = "okay";
++};
++
++&usbotg {
++	dr_mode = "host";
++	status = "okay";
++};
++
++&usbphy {
++	status = "okay";
++};
++
++/*
++ * Ethernet : le RJ45 est sur EMAC1, relié au PHY AC300 co-packagé.
++ * Le pilote retenu est celui du vendor (`packages/sunxi-gmac`, hors arbre) —
++ * même chaîne que la Transpeed : compatible vendor, PHY sur un nœud MDIO
++ * séparé (le driver vendor ne crée pas de bus MDIO), horloge 24 MHz par PWM5.
++ *
++ * Spécifique à cette carte, **mesuré au banc le 2026-11-13** : le PHY répond en
++ * **MDIO 0** (le `ac300-phy@10` du FDT vendor ne désigne pas l'adresse du bus ;
++ * à `0x10` le driver rend `Mac reset failed, please check phy and mac clk` et
++ * aucun `eth0` n'apparaît). `syscon` et les délais en picosecondes sont repris
++ * du FDT vendor ; `syscfg-value` (`0x3fe1`, valeur de la Transpeed) est retiré :
++ * le vendor ne l'écrit pas et sa présence ne change rien à la réception.
++ */
++&pwm {
++	status = "okay";
++};
++
++&pwm5 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pwm5_pin>;
++	clk_bypass_output = <1>;   /* horloge propre, pas une forme modulee */
++};
++
++&emac1 {
++	compatible = "allwinner,sunxi-gmac";
++	reg = <0x05030000 0x10000>, <0x03000034 0x4>;
++	interrupts = <GIC_SPI 15 IRQ_TYPE_LEVEL_HIGH>;
++	interrupt-names = "gmacirq";
++	clocks = <&ccu CLK_BUS_EMAC1>;
++	clock-names = "gmac";
++	pinctrl-names = "default";
++	pinctrl-0 = <&rmii_pins>;
++	phy-mode = "rmii";
++	phy-handle = <&ac300_ephy_h96>;
++	tx-delay = <7>;
++	rx-delay = <31>;
++	syscon = <&syscon>;
++	allwinner,rx-delay-ps = <0xc1c>;
++	allwinner,tx-delay-ps = <0x2bc>;
++	allwinner,no-crc-check;
++	status = "okay";
++};
++
++/*
++ * Calibration EPHY : même offset que le H6 (sun50i-h6.dtsi) et que la
++ * Transpeed (mesuré à 0x0506 sur cette famille de cartes). Sans cette
++ * cellule, le driver garde caldata = 0 et le PHY n'est pas calibré.
++ * Déclarée ici, pas dans un dtsi patché ailleurs : le DTS doit compiler sur
++ * un noyau nu plus la série Armbian.
++ */
++&sid {
++	ephy_calib_h96: ephy-calibration@2c {
++		reg = <0x2c 0x2>;
++	};
++};
++
++&{/soc} {
++	ac300_mdio_h96: mdio@5030048 {
++		compatible = "allwinner,sunxi-mdio";
++		reg = <0x05030048 0x8>;
++		#address-cells = <1>;
++		#size-cells = <0>;
++		status = "okay";
++
++		ac300_ephy_h96: ethernet-phy@0 {
++			compatible = "allwinner,sun50i-h618-ac300-ephy",
++				"ethernet-phy-ieee802.3-c22";
++			reg = <0x00>;
++			clocks = <&ccu CLK_EMAC_25M>, <&ac300_pwm_clk>;
++			clock-names = "ephy", "pwm";
++			nvmem-cells = <&ephy_calib_h96>;
++			nvmem-cell-names = "calibration";
++			max-speed = <100>;
++		};
++	};
++};

@@ -17,63 +17,11 @@
   hardware.nixbian.board = lib.mkDefault "transpeed-8k618-t";
   hardware.nixbian.kernelVendor = lib.mkDefault "edge";
 
-  # Ethernet : le RJ45 est sur EMAC1, relié au PHY AC200/AC300 co-packagé
-  # (MDIO addr 0). Rien de tout cela n'est dans l'arbre 7.0.14 — mesures et
-  # contrat DT complets dans la skill `sunxi-h618-board-bringup`.
-  #
-  # Posé ici et pas dans `family/sunxi64.nix` : `extraPatches` et
-  # `extraConfig` changent l'entrée du noyau, donc son hash. Au niveau
-  # famille, la Zero3 et les autres cartes H616 reconstruiraient leur noyau
-  # pour rien (parité de cache). La carte porte ses propres faits.
-  #
-  # `CONFIG_AC300_PHY=y` : le driver PHY doit être enregistré avant le probe
-  # du MAC, sinon `genphy` s'attache au PHY et n'en décroche plus.
-  # `CONFIG_AW_GMAC=m` + `CONFIG_AW_GMAC_MDIO=m` + `CONFIG_AW_EPHY=m` : le
-  # pilote Ethernet retenu est celui du vendor, hors arbre
-  # (`packages/sunxi-gmac`). La variante mainline ne reçoit **aucune** trame
-  # ici (MAC/DMA/ring prouvés sains par loopback, PHY configuré, `rx_packets`
-  # reste à 0). On la garde néanmoins en module (`=m`) : la couche nixbian
-  # liste `dwmac-sun8i` dans `boot.kernelModules`, et le pruning d'images
-  # échoue sur un module absent. Elle ne se lie à rien — le nœud `emac1` porte
-  # `compatible = "allwinner,sunxi-gmac"` depuis le patch 0004, et `emac0`
-  # reste désactivé — donc elle charge et reste inerte.
-  # Les .ko restent des modules : un rebuild noyau aarch64 coûte ~45 min,
-  # contre ~2 min pour recompiler et transférer un module par UART.
-  hardware.nixbian.extraPatches = [
-    ../../patches/kernel/0001-net-phy-add-ac300-ephy.patch
-    ../../patches/kernel/0002-arm64-dts-h616-emac1-ac300.patch
-    ../../patches/kernel/0003-net-stmmac-sun8i-h616-emac1.patch
-    ../../patches/kernel/0004-arm64-dts-h616-transpeed-sunxi-gmac.patch
-    # Horloge EPHY : le manuel H616 (3.3.5.86) donne PLL_PERI0/24 = 25 MHz,
-    # pas ahb3 (200 MHz). Meme correctif que la H96, verifie sur carte
-    # (corruption 0x55 supprimee).
-    ../../patches/kernel/0005-clk-sunxi-ng-emac25m-from-pll-periph0.patch
-  ];
-  hardware.nixbian.extraConfig = lib.mkAfter ''
-    CONFIG_AC300_PHY=y
-    CONFIG_AW_GMAC=m
-    CONFIG_AW_GMAC_MDIO=m
-    CONFIG_AW_EPHY=m
-    CONFIG_DWMAC_SUN8I=m
-    # Les modules de l'image sont compiles par un outillage qui ne produit pas
-    # exactement le meme BTF que le noyau. Sans cette option le noyau refuse de
-    # les charger (`failed to validate module [X] BTF: -22` puis
-    # `could not insert 'X': Invalid argument`) : mesure sur `usbnet`, donc
-    # aucun dongle USB-Ethernet ne fonctionnait. L'ABI reste verifiee par
-    # vermagic et les versions de symboles ; BTF ne sert qu'a l'introspection
-    # BPF, l'autoriser est sans risque.
-    CONFIG_MODULE_ALLOW_BTF_MISMATCH=y
-    # Le 24 MHz du PHY AC300 est fabriqué par le canal 5 du PWM : le PWM
-    # mainline (`sun4i`) ne gère pas H616, c'est le driver vendor qui prend
-    # le nœud. Sans lui, pas de `pwm-clock`, donc pas de REF_CLK RMII et le
-    # reset du MAC rend `-110`.
-    CONFIG_PWM_SUNXI_ENHANCE=m
-  '';
+  # Ethernet : le noyau de famille (parts/modules.nix) porte les patches
+  # AC300/EMAC1 et la configuration vendor. La carte ne garde ici que les
+  # modules hors arbre et leur ordre : `pwm-sunxi-enhance` d'abord, puis le bus
+  # MDIO, puis le MAC. Mesuré : dans le désordre, le PHY tombe sur `genphy`.
 
-  # Ethernet : deux modules hors arbre, chargés dans cet ordre.
-  # `pwm-sunxi-enhance` d'abord (il fabrique le 24 MHz du PHY via `pwm-clock`),
-  # puis le bus MDIO, puis le MAC. Mesuré : dans le désordre, le PHY tombe sur
-  # `genphy` et n'en décroche plus.
   boot.extraModulePackages = [
     (pkgs.callPackage ../../packages/sunxi-gmac {
       kernel = config.boot.kernelPackages.kernel;

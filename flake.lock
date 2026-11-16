@@ -45,11 +45,11 @@
         "systems": "systems"
       },
       "locked": {
-        "lastModified": 1794844325,
-        "narHash": "sha256-e5uGoNBmpZ62gH4nF9nOf5QDny4h6MtcEWipp04UcK8=",
+        "lastModified": 1794855035,
+        "narHash": "sha256-W9wUJb5vzdQLCBI7ybwZc7W+KhFh0YGj2fbof5OcurI=",
         "owner": "zibaone",
         "repo": "nixbian",
-        "rev": "ea40cd5c329bb5a425ece180e57ecfa4a5022b1a",
+        "rev": "f48054df83fb8b2b14710d3cc3abf27500a8c056",
         "type": "github"
       },
       "original": {
@@ -68,11 +68,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1794844144,
-        "narHash": "sha256-LaQa8xfpZrvfeN/n6Ob8uHh2v9x3sIlnwOdSV7LSnSk=",
+        "lastModified": 1794853436,
+        "narHash": "sha256-hwWsegehIiFmTYduGQ4MmnQrzui4OvifT1h5/voc3Y4=",
         "owner": "zibaone",
         "repo": "nixelec-common",
-        "rev": "73697ac7eff086ecf92757a06bea30da5007d912",
+        "rev": "722e3005f89dfe4c0ba4c59e129a9fb907f8b394",
         "type": "github"
       },
       "original": {
