@@ -11,7 +11,21 @@ let
 
   # La commande est construite ici pour que `text` puisse contenir des
   # espaces sans casser le script systemd.
-  action = if cfg.text == "" then "blank" else "write ${lib.escapeShellArg cfg.text}";
+  action = if cfg.text == "" then [ "blank" ] else [ "write" cfg.text ];
+
+  args = [
+    "--chip"
+    cfg.chip
+    "--clk"
+    (toString cfg.clk)
+    "--dat"
+    (toString cfg.dat)
+    "--brightness"
+    (toString cfg.brightness)
+  ]
+  ++ lib.optional cfg.pushPull "--push-pull"
+  ++ lib.optional cfg.leftToRight "--ltr"
+  ++ action;
 in
 {
   # Afficheur de facade 7 segments des boites H616/H618 (FD650/FD655).
@@ -63,6 +77,27 @@ in
       description = "Luminosite, 0 (1/8 de rapport cyclique) a 7 (8/8).";
     };
 
+    pushPull = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Piloter les deux lignes en sortie franche au lieu d'open-drain +
+        pull-up. Requis par les cartes dont la dalle n'a **pas** de pull-up
+        externe : sur la Transpeed 8K618-T, l'open-drain ne fait rien monter
+        la ligne et l'afficheur reste eteint, alors que le push-pull allume
+        la dalle. La H96, elle, fonctionne en open-drain.
+      '';
+    };
+
+    leftToRight = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        L'adresse 0x68 porte le chiffre de **gauche**. Faux sur la H96
+        (0x68 = chiffre de droite, mesure), vrai sur la Transpeed.
+      '';
+    };
+
     text = lib.mkOption {
       type = lib.types.str;
       default = "";
@@ -88,12 +123,7 @@ in
         RemainAfterExit = true;
       };
       script = ''
-        ${fd6xx}/bin/fd6xx \
-          --chip ${lib.escapeShellArg cfg.chip} \
-          --clk ${toString cfg.clk} \
-          --dat ${toString cfg.dat} \
-          --brightness ${toString cfg.brightness} \
-          ${action} || true
+        ${fd6xx}/bin/fd6xx ${lib.escapeShellArgs args} || true
       '';
     };
   };
