@@ -17,7 +17,7 @@ session or two, `L` more.
 | **P2/M** | 1 (`ntp-after-wifi`) | functional gap on a cold boot |
 | **P2/S** | 51, 52 (RX checksum flag, stable MAC on the Transpeed) | the driver still advertises a verification it does not perform, and a random MAC per boot defeats any DHCP reservation |
 | **P2/M** | 53 (defer instead of load order), 56 (BTF root cause, nixbian) | both turn a working port into a robust one, and both are latent for other boards |
-| **P2/L** | 58 (`brcmfmac` panic) | the real blocker for a kiosk without a cable |
+| **P2/L** | 58 (`brcmfmac` panic) — **closed 2026-11-16** by `045ad20` | the scan is measured 2.4/5 GHz; the panic was pre-`4219ece` |
 | **P3** | 3, 4, 10 (replay on the image + public audio doc), 12, 16, 17, 19, 21, 42 (`CONFIG_PSI`, costs a kernel), 44 (`mmc -110` / CMD0, optional), 45 (add-on icons), 46 (CEC kernel fix), 47 (WirePlumber abort: retest on 26.11, nothing to port), 54 (`sunxi-mdio` reads PHY ID 0), 55 (`dwmac-sun8i` in the example's `boot.kernelModules`), 57 (`CONFIG_KEXEC`), 59 (Transpeed PHY, blocked on a second unit), public diagnostics | deferred, or knowledge rather than code |
 | **closed** | 6, 9, 11, 23, 26, 30, 31, 33, 34, 37, 38, 39, 43 (governor), 46 (layer workaround), 48 (watchdog), 50 (kiosk console), D1 | done |
 
@@ -64,7 +64,7 @@ session or two, `L` more.
 | 55 | `dwmac-sun8i` listed in a `boot.kernelModules` | **mis-attributed, corrected 2026-11-08**: the nixbian layer does *not* list it — only `examples/transpeed-base.nix` does. The pruning hazard is real but local to the example, not shared by the family | drop the entry from the example, or keep `CONFIG_DWMAC_SUN8I=m` there |
 | 56 | BTF mismatch between the kernel and its own modules (nixbian) | measured: `failed to validate module [usbnet] BTF: -22`, so no USB-Ethernet driver could load; `CONFIG_MODULE_ALLOW_BTF_MISMATCH=y` masks the symptom | align the module toolchain on the kernel's |
 | 57 | `CONFIG_KEXEC` absent | blocks kexec deployments | enable it in `extraConfig` |
-| 58 | `brcmfmac` panic when the radio starts | measured ~1.5 s after `wlan0` comes up: kernel write to read-only memory, RCU stalls, `sunxi-wdt` reset. **Measured before `4219ece`** (firmware/NVRAM/regdb into the board module, stable `wlan0`, `brcmfmac-wcc`, uncompressed firmware) | replay first, then see `chantiers-drivers-transpeed.md` §10 |
+| 58 | `brcmfmac` panic when the radio starts | **closed on 2026-11-16** by `045ad20` (firmware/NVRAM/regdb in the board module, stable `wlan0`, `brcmfmac-wcc`, uncompressed firmware); `iw dev wlan0 scan` then measured 2.4/5 GHz. The panic itself was measured before `4219ece` | replay the scan on the bench; no code left |
 | 59 | Transpeed internal PHY (AC300) defective | decodes autonegotiation wrong (`LPA 0x4461` on a port that advertises 10/100/1000) and corrupts the RX payload; MAC, DMA and the driver RX path are proven sane by internal loopback | needs a second unit to separate unit fault from design |
 
 ## Public add-ons example
@@ -79,7 +79,7 @@ repositories stay out of this layer.
 
 The `cache` job (on `push` to `main` or manual dispatch) builds and pushes:
 
-- the WiFi-enabled toplevel (`orangepizero3-kodi-cache`): kernel, U-Boot, Kodi,
+- the WiFi-enabled toplevel (`orangepizero3-cache`): kernel, U-Boot, Kodi,
   mesa, pipewire, systemd, UWE5622 driver and firmware;
 - the `uwe5622` package;
 - `kernel.dev`, which is a build input and not part of the system closure.
@@ -92,7 +92,7 @@ are not built here.
 A fresh clone evaluates from the public inputs alone:
 
 ```bash
-nix eval --raw .#nixosConfigurations.orangepizero3-kodi.config.system.build.toplevel.drvPath
+nix eval --raw .#nixosConfigurations.orangepizero3.config.system.build.toplevel.drvPath
 ```
 
 Keep the property: a `path:` input or a private URL breaks it silently, and the

@@ -61,13 +61,31 @@ Measured on the bench on 2026-11-06/07, kernel `7.0.14` with patches 0001-0004.
 | Internal Ethernet, traffic | `ping` both ways, 56/1000/1400/1472 bytes | PC → box: 30/30, 0 % loss. Box → PC: `+N corrupted` before the checksum fixes; with `CHECKSUM_NONE` nothing is received — the RX payload is corrupt |
 | Internal Ethernet, driver sanity | MAC internal loopback (`BASIC_CTL0 |= BIT(1)`) + `ping` on its own address | **3/3 received, checksums validated**: MAC, DMA, descriptors, ring and the driver RX path are sound. The defect is the AC300 PHY of this unit |
 | USB dongle (SR9700) | `enu1`, DHCP, `ssh` | validated 2026-11-07: `192.168.1.23/24` via DHCP, default route, ping 3/3 from the PC, TCP/22 open, 10 MB in 13.09 s (≈ 6.4 Mbps) |
-| WiFi (BCM4334) | `iw dev wlan0 scan` | **not usable as measured**: kernel panic ~1.5 s after the radio starts (write to read-only memory, RCU stalls, `sunxi-wdt` reset), see `chantiers-drivers-transpeed.md` §10. **This predates `4219ece`** (firmware, NVRAM, `wireless-regdb`, stable `wlan0`, `brcmfmac-wcc`, `firmwareCompression = "none"`): replay before investigating |
+| WiFi (BCM4334) | `iw dev wlan0 scan` | **measured 2026-11-16** after `045ad20`: 2.4/5 GHz scan. The earlier panic ~1.5 s after the radio started (write to read-only memory, RCU stalls, `sunxi-wdt` reset) was measured **before `4219ece`** (firmware, NVRAM, `wireless-regdb`, stable `wlan0`, `brcmfmac-wcc`, `firmwareCompression = "none"`). |
 | Toplevel after shared-layer evolutions | `nix eval --raw .#nixosConfigurations.transpeed-8k618-t.config.system.build.toplevel.drvPath` | verified 2026-11-08: evaluates in 3 s against the current nixelec family layer and nixbian metadata |
+
+## On the board (H96 Max H618)
+
+The board (`.50`) was **not reachable on 2026-11-16**: only the evaluation and
+kernel-derivation checks below were run. The other rows are explicitly
+unchecked; do not read the green evaluation as a hardware proof.
+
+| Check | Command / observation | Status |
+|---|---|---|
+| Toplevel evaluation (eMMC) | `nix eval --raw .#nixosConfigurations.h96-max-h618-emmc.config.system.build.toplevel.drvPath` | verified 2026-11-16 |
+| HavenOS kiosk evaluation | `nix eval --raw .#nixosConfigurations.h96-max-h618-edge-kodi.config.system.build.toplevel.drvPath` | verified 2026-11-16; eMMC root label `nixelec-h96` |
+| AIC8800 kbuild hook | `nix derivation show` on the kernel | `3401-net-wireless-backport-aic8800-sdio` and `0001-…kbuild` present; `0006` absent. `.ko` not materialized |
+| eMMC cold boot | boot with HDMI | **not measured** |
+| IR (`sunxi-ir`, overlay `ir@7040000`) | `ir-keytable -t` | **not measured**; the overlay path is only evaluated |
+| Front panel (FD655, PH2/PH3, text `H96`) | screen read | measured 2026-11-15 (`docs/affichage-facade.md`) |
+| WiFi AIC8800D80 | `iw dev wlan0 scan` | **not measured** |
+| HDMI / Kodi GBM | `modetest`, 1080p playback | **not measured** |
 
 ## Sources
 
 - `nix-v4l2-request/docs/fenetrage-kodi-gbm.md`
 - `nix-v4l2-request/docs/domaine-alimentation-gpu.md`
+- `docs/affichage-facade.md` (front-panel wiring and screen measurements)
 - raw reference-board logs kept outside this repository
 
 These documents describe measurements made on the reference board. They are not
