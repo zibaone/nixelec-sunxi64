@@ -39,7 +39,7 @@ La note « PI2/PI3 » du prompt de chantier etait donc fausse : elle venait d'un
 lecture de `0x07` comme « 8e banque ». Une erreur de banque sur un GPIO est
 exactement le risque que le chantier voulait eviter.
 
-### Transpeed 8K618-T — **PI11 = CLK, PI12 = DAT** (DTS vendor), mais **aucune puce sur ces broches au boot**
+### Transpeed 8K618-T — **PI11 = CLK, PI12 = DAT** (DTS vendor), chaîne vendor 2 fils, dalle muette
 
 Le DTB vendor du firmware stock (`H618.apollo-p17.8K618-T_100M_12_FD650`,
 decompresse, FDT a l'offset 144384) donne :
@@ -62,30 +62,57 @@ fd628_dev@0 {
 
 `PI11` = GPIO 267, `PI12` = GPIO 268 (8×32+11 / +12).
 
-**Mais la puce ne repond pas sur ces broches sous NixOS** : en configurant
-PI12 en entree avec pull-down cote SoC, la ligne lit **0** — comme PI13/PI14,
-qui ne sont reliees a rien — alors que sur la H96 la meme mesure sur PH3 lit
-**1** (le pull-up interne de la puce, 150-400 uA, gagne). Autrement dit :
-rien n'est electriquement present sur PI11/PI12 au moment du test. Aucune
-trame (FD650 ou FD628, MSB ou LSB, 2 fils, 100 kHz ou 300 Hz) n'allume quoi
-que ce soit.
+#### Ce que dit vraiment la chaîne vendor (établi le 2026-11-16)
 
-L'afficheur existe pourtant : il s'allumait sous Android, et la puce FD650B-S
-est soudée sur cette carte.
+Le pilote n'est pas un module : `aml_fd628` est **compilé dans le noyau**.
+Faits lus dans l'Image du noyau et dans le rootfs vendor de l'image stock :
 
-Deux hypotheses restent, a departager **avant** de sonder d'autres broches :
+| Fait | Preuve |
+|---|---|
+| Pilote lié au noyau, dérivé Amlogic | `aml_fd628.parmtype=test:int`, `aml_fd628.description=fd628 Driver`, `aml_fd628.license=GPL` (section modinfo de l'Image) |
+| Build **2 fils** : la troisième ligne a été retirée | `fd628_gpio_stb` : **0 occurrence** dans toute l'image ; `can't request gpio of fd628_stb` : **0** ; `fd628_gpio_clk`/`fd628_gpio_dat` et leurs deux messages d'erreur : présents |
+| Le contenu de la dalle est écrit par un démon | `init.sun50iw9p1.rc` : `service vfdsrv /system/bin/vfdsrv` (class main, root, oneshot, `u:r:vfdsrv:s0`) |
+| Nœud caractère exposé par le pilote | `chmod 0666 /dev/fd628_dev` + `/sys/module/aml_fd628/parameters/{test,stress,time}` |
+| LED d'état, pas la dalle | `gpio_para` : `normal_led` = PH6, `standby_led` = PH7 |
 
-1. **La dalle est alimentee par une ligne que le pilote vendor commande**
-   (regulateur ou GPIO d'enable absent du noeud DT, donc invisible dans les
-   deux proprietes). Une puce non alimentee ne tire pas ses pull-ups, ce qui
-   explique exactement la mesure.
-2. **Les broches diffèrent sur cette revision** : le DTB est celui de la
-   reference `apollo-p17`, pas forcement celui de la carte.
+Le pilote amont éponyme (`aml_fd628.c`, noyau Amlogic) est **3 fils** et
+s'arrête au probe si `fd628_gpio_stb` manque. Le vendor l'a donc modifié pour
+ce build, et la puce n'est pas un FD628 (qui exige un STB) mais un **FD650** —
+cohérent avec le nom de l'image (`..._12_FD650`) et avec le marquage du PCB.
 
-Prochaine experience (non faite) : balayer prudemment les GPIO voisins en
-sortie pendant que PI12 est en entree pull-down, et garder le premier qui fait
-passer PI12 a 1 — c'est la puce qui se signale elle-meme, sans supposition sur
-le protocole. A faire hors du boot, avec `fd6xx` en mode manuel.
+#### Correction d'une conclusion trop forte
+
+La mesure « PI12 = 0 en entrée pull-down » ne prouve **pas** l'absence de
+puce : un FD628 a un DIO *push-pull*, qui lit 0 même présent et alimenté. Le
+test ne vaut que pour une puce à DAT open-drain **avec** pull-up interne — le
+cas du FD655 de la H96, qui lit 1. Sur un FD650 il reste valable, mais il ne
+distingue pas « puce absente » de « puce non alimentée ».
+
+#### Établi / hypothèses / non vérifié
+
+**Établi** : broches déclarées PI11/PI12 ; chaîne vendor entièrement 2 fils ;
+démon `vfdsrv` sur `/dev/fd628_dev` ; LED d'état sur PH6/PH7 ; aucune trame
+essayée n'allume la dalle.
+
+**Hypothèses**, par ordre de plausibilité :
+1. **Dalle non alimentée** — rail commuté absent du nœud DT, qui ne porte que
+   clk/dat (ni `regulator`, ni `enable`).
+2. **Révision différente** — ce DTB est celui de la référence `apollo-p17` ;
+   rien ne prouve que la carte .51 soit exactement celle-là.
+3. **Trame différente** — le 2 fils du vendor n'est ni le TWI FD650 à 9 tops
+   ni le SPI FD628 que `fd6xx` implémente.
+
+**Non vérifié** :
+- la tension d'alimentation de la puce (aucune mesure au multimètre) ;
+- la correspondance visuelle broche/PCB sur la carte .51 ;
+- le désassemblage de `FD628_WrByte` du noyau vendor, qui donnerait la trame
+  exacte (symboles présents dans l'Image, non exploités).
+
+**Prochaine étape, dans cet ordre** : (1) mesurer VCC et GND sur la puce,
+calibré sur la H96 qui fonctionne ; (2) si VCC est absent, chercher l'enable
+dans le rootfs vendor ; (3) sinon, désassembler `FD628_WrByte` et rejouer sa
+trame exacte. Le balayage de broches reste **en dernier** : un GPIO qui
+commande un régulateur ne se sonde pas à l'aveugle.
 
 ### Où sont les DTBs vendor (inventaire vérifié)
 
