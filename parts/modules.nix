@@ -86,15 +86,29 @@ let
         CONFIG_PWM_SUNXI_ENHANCE=m
       '';
     in
-    helpers.buildKernel {
-      inherit meta extraConfig;
-      extraPatches = localPatches ++ vendorPatches;
-      dtb_list = [
-        "allwinner/sun50i-h618-orangepi-zero3.dtb"
-        "allwinner/sun50i-h618-transpeed-8k618-t.dtb"
-        "allwinner/sun50i-h618-h96-max.dtb"
-      ];
-      configMode = "armbian";
+    let
+      kernel = helpers.buildKernel {
+        inherit meta extraConfig;
+        extraPatches = localPatches ++ vendorPatches;
+        dtb_list = [
+          "allwinner/sun50i-h618-orangepi-zero3.dtb"
+          "allwinner/sun50i-h618-transpeed-8k618-t.dtb"
+          "allwinner/sun50i-h618-h96-max.dtb"
+        ];
+        configMode = "armbian";
+      };
+    in
+    kernel
+    // {
+      # Le garde-fou HavenOS (`cedrus-vp9-guard.nix`) vérifie la présence des
+      # patches VP9/fencing dans le noyau du kiosque. Sous le modèle B ils sont
+      # dans cette couche, donc on les expose ici.
+      passthru = (kernel.passthru or { }) // {
+        patches = localPatches ++ vendorPatches;
+        linuxFamily = "sunxi64";
+        platformKey = "sunxi64-edge";
+        branch = base.branch or "linux-7.0.y";
+      };
     };
 in
 {
