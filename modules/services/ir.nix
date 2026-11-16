@@ -1,7 +1,7 @@
 {
   config,
   lib,
-  pkgs,
+  dtOverlay,
   ...
 }:
 
@@ -15,7 +15,7 @@ let
   # nixpkgs n'applique un overlay que si son `compatible` intersecte celui de
   # la carte : sans cette ligne il est **silencieusement sauté** (« set() is
   # incompatible »). D'où `dtCompatible`, qui vise le SoC par défaut.
-  dtOverlay = pkgs.writeText "ir-enable.dts" ''
+  irOverlayDts = ''
     /dts-v1/;
     /plugin/;
 
@@ -33,15 +33,12 @@ let
     };
   '';
 
-  # Compilé ici plutôt que laissé à `hardware.deviceTree.overlays` avec un
-  # `dtsFile` : `compileDTS` de nixpkgs tire `kernel.dev`
-  # (include-prefixes), sortie qui n'est pas au cache — mesuré le 2026-11-16,
-  # cela déclenche une recompilation complète du noyau. Un `.dtbo` fourni tel
-  # quel ne passe que par `applyOverlays`, qui travaille sur le DTB déjà
-  # construit.
-  dtOverlayDtbo = pkgs.runCommandLocal "ir-enable.dtbo" { nativeBuildInputs = [ pkgs.dtc ]; } ''
-    ${pkgs.dtc}/bin/dtc -@ -I dts -O dtb -o $out ${dtOverlay}
-  '';
+  # Compilation par le mécanisme commun (flake.lib.mkDtbo) : dtc seul, pas de
+  # kernel.dev, donc pas de recompilation du noyau.
+  dtOverlayDtbo = dtOverlay.mkDtbo {
+    name = "ir-enable";
+    dts = irOverlayDts;
+  };
 in
 {
   options.nixelec.ir = {

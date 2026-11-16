@@ -154,8 +154,9 @@ in
     # IR : tables, fusion, gardes et keymap dans nixelec-common ; cette couche
     # apporte le recepteur sunxi-ir et l'overlay qui active ir@7040000.
     ir =
-      { ... }:
+      { pkgs, ... }:
       {
+        _module.args.dtOverlay = inputs.nixelec-common.lib { inherit pkgs; };
         imports = [
           inputs.nixelec-common.nixosModules.ir
           ../modules/services/ir.nix
