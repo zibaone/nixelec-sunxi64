@@ -56,12 +56,6 @@
     # tombe a 10 Mbit/s et les trames longues arrivent corrompues alors que le
     # numerique est sain.
     ../../patches/kernel/0005-clk-sunxi-ng-emac25m-from-pll-periph0.patch
-    # AIC8800 SDIO : la serie Armbian sunxi-7.0 (patch nixbian 3401) ajoute les
-    # 136 fichiers de `drivers/net/wireless/aic8800_sdio/` mais ne touche ni le
-    # Makefile ni le Kconfig de `drivers/net/wireless/` : kbuild ne descend
-    # jamais dans ce repertoire et aucun `.ko` n'est produit (verifie sur les
-    # sorties `*-modules` de 7.0.14). Ce patch ajoute les deux lignes d'accroche.
-    ../../patches/kernel/0006-net-wireless-wire-aic8800-sdio-into-kbuild.patch
   ];
   hardware.nixbian.extraConfig = lib.mkAfter ''
     CONFIG_AC300_PHY=y
