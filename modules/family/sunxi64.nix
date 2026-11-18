@@ -208,14 +208,19 @@ in
       # A single extlinux entry on an appliance: no boot menu.
       boot.loader.generic-extlinux-compatible.configurationLimit = lib.mkDefault 0;
 
-      # Le gouverneur DVFS par défaut (dbs/ondemand) se bloque sur ces SoC :
-      # le `sync_state()` du PPU du H616 reste en attente sur `1800000.gpu`,
-      # le `pm_runtime_work` du GPU ne rend pas la main et le
-      # `dbs_work_handler` reste coincé — mesuré sur Transpeed : workqueue
-      # lockup de 57 s, activation jamais terminée. L'image nixelec qui
-      # démarrait portait `cpufreq.default_governor=performance` ; on le
-      # rétablit ici plutôt que dans chaque profil.
-      boot.kernelParams = [ "cpufreq.default_governor=performance" ];
+      # Le DVFS du H616/H618 casse le timer : le changement d'OPP passe par
+      # ccu_helper_wait_for_lock (usleep dans le notifier de PLL) et
+      # reprogramme un tick device NULL. Mesuré le 2026-11-18 sur Transpeed :
+      # avec `initcall_blacklist=sun50i_cpufreq_init` la carte démarre
+      # (Multi-User System, afficheur façade OK) ; sans, Oops au
+      # clockevents/timerqueue, stall RCU ou workqueue lockup selon la course.
+      # Le gouverneur `performance` est désormais compilé (nixbian 6aaad244)
+      # pour que le paramètre ne soit plus ignoré, mais tant que le changement
+      # d'OPP initial n'est pas instruit on coupe le DVFS.
+      boot.kernelParams = [
+        "cpufreq.default_governor=performance"
+        "initcall_blacklist=sun50i_cpufreq_init"
+      ];
     }
 
     # `=m`: load the power domain from the initrd, before udev.
