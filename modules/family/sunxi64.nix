@@ -207,6 +207,15 @@ in
 
       # A single extlinux entry on an appliance: no boot menu.
       boot.loader.generic-extlinux-compatible.configurationLimit = lib.mkDefault 0;
+
+      # Le gouverneur DVFS par défaut (dbs/ondemand) se bloque sur ces SoC :
+      # le `sync_state()` du PPU du H616 reste en attente sur `1800000.gpu`,
+      # le `pm_runtime_work` du GPU ne rend pas la main et le
+      # `dbs_work_handler` reste coincé — mesuré sur Transpeed : workqueue
+      # lockup de 57 s, activation jamais terminée. L'image nixelec qui
+      # démarrait portait `cpufreq.default_governor=performance` ; on le
+      # rétablit ici plutôt que dans chaque profil.
+      boot.kernelParams = [ "cpufreq.default_governor=performance" ];
     }
 
     # `=m`: load the power domain from the initrd, before udev.
