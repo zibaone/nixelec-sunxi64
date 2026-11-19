@@ -17,6 +17,13 @@
   hardware.nixbian.board = lib.mkDefault "transpeed-8k618-t";
   hardware.nixbian.kernelVendor = lib.mkDefault "edge";
 
+  # Pas de carte son HDMI ici non plus : `/proc/asound/cards` ne liste que
+  # `sun4i-codec` (mesure du 2026-11-19) et le DTS amont ne declare pas la
+  # carte son HDMI. Laisser le defaut de famille `hw:1,0` ferait pointer Kodi
+  # sur un sink PipeWire inexistant et rendrait toutes les sorties muettes ;
+  # l'analogique est active par l'hote.
+  nixelec.platform.hdmiPcm = lib.mkForce null;
+
   # Ethernet : le noyau de famille (parts/modules.nix) porte les patches
   # AC300/EMAC1 et la configuration vendor. La carte ne garde ici que les
   # modules hors arbre et leur ordre : `pwm-sunxi-enhance` d'abord, puis le bus

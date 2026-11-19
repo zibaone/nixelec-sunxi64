@@ -30,8 +30,8 @@ this one yet.
 Signed-off-by: zibao <zibaone@proton.me>
 ---
  arch/arm64/boot/dts/allwinner/Makefile | 1 +
- arch/arm64/boot/dts/allwinner/sun50i-h618-h96-max.dts | 313 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
- 2 files changed, 314 insertions(+)
+ arch/arm64/boot/dts/allwinner/sun50i-h618-h96-max.dts | 322 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 323 insertions(+)
 
 diff --git a/arch/arm64/boot/dts/allwinner/Makefile b/arch/arm64/boot/dts/allwinner/Makefile
 --- a/arch/arm64/boot/dts/allwinner/Makefile
@@ -49,7 +49,7 @@ diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h618-h96-max.dts b/arch/arm64/
 new file mode 100644
 --- /dev/null
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h618-h96-max.dts
-@@ -0,0 +1,313 @@
+@@ -0,0 +1,322 @@
 +// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
 +/*
 + * H96 Max H618 — carte sans slot SD, eMMC uniquement.
@@ -362,4 +362,13 @@ new file mode 100644
 +	hdmi_out_con: endpoint {
 +		remote-endpoint = <&hdmi_con_in>;
 +	};
++};
++
++/*
++ * Telecommande IR : le noeud `ir@7040000` du SoC arrive en `disabled`. Le
++ * kiosque s'en sert (sunxi-ir, protocole nec, keymap du depot) depuis le
++ * 2026-11-19 ; sans ce bloc, `/sys/class/rc/rc0` n'existe pas sur la carte.
++ */
++&ir {
++	status = "okay";
 +};
