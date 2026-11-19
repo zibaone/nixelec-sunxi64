@@ -30,8 +30,8 @@ this one yet.
 Signed-off-by: zibao <zibaone@proton.me>
 ---
  arch/arm64/boot/dts/allwinner/Makefile | 1 +
- arch/arm64/boot/dts/allwinner/sun50i-h618-h96-max.dts | 277 +++++++++++++++++++++++++++++++++++
- 2 files changed, 278 insertions(+)
+ arch/arm64/boot/dts/allwinner/sun50i-h618-h96-max.dts | 313 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 314 insertions(+)
 
 diff --git a/arch/arm64/boot/dts/allwinner/Makefile b/arch/arm64/boot/dts/allwinner/Makefile
 --- a/arch/arm64/boot/dts/allwinner/Makefile
@@ -49,7 +49,7 @@ diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h618-h96-max.dts b/arch/arm64/
 new file mode 100644
 --- /dev/null
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h618-h96-max.dts
-@@ -0,0 +1,278 @@
+@@ -0,0 +1,313 @@
 +// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
 +/*
 + * H96 Max H618 — carte sans slot SD, eMMC uniquement.
@@ -326,5 +326,40 @@ new file mode 100644
 +			nvmem-cell-names = "calibration";
 +			max-speed = <100>;
 +		};
++	};
++};
++
++/*
++ * Sortie HDMI : le pipeline d'affichage du SoC est arrive desactive (patch
++ * Armbian 0042) et aucune carte ne l'active pour la H96. Sans ces quatre
++ * blocs, aucun noeud DRM n'est cree : pas de /dev/dri, pas de HDMI, et
++ * kodi-gbm redemarre en boucle. Copie du bloc de la Transpeed (meme PMIC
++ * AXP313a, hvcc sur aldo1).
++ */
++/ {
++	connector {
++		compatible = "hdmi-connector";
++		type = "a";
++
++		port {
++			hdmi_con_in: endpoint {
++				remote-endpoint = <&hdmi_out_con>;
++			};
++		};
++	};
++};
++
++&de {
++	status = "okay";
++};
++
++&hdmi {
++	hvcc-supply = <&reg_aldo1>;
++	status = "okay";
++};
++
++&hdmi_out {
++	hdmi_out_con: endpoint {
++		remote-endpoint = <&hdmi_con_in>;
 +	};
 +};
