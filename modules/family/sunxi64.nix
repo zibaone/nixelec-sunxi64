@@ -296,7 +296,12 @@ in
         # (`nixelec.platform` n'existe pas) et un `options ?` y crée une
         # récursion infinie.
         hdmiPcm =
-          if builtins.elem config.hardware.nixbian.board [ "h96-max-h618" "transpeed-8k618-t" ] then
+          if
+            builtins.elem config.hardware.nixbian.board [
+              "h96-max-h618"
+              "transpeed-8k618-t"
+            ]
+          then
             null
           else
             lib.mkDefault "hw:1,0";
