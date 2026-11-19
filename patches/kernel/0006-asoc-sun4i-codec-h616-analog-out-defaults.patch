@@ -1,0 +1,90 @@
+From: Hermes <hermes@local>
+Subject: [PATCH] ASoC: sun4i-codec: H616 analog out defaults at probe
+
+Les commutateurs de route DAC -> mixer et la sortie ligne du codec H616
+sont a zero au reset. DAPM ne met le bloc numerique du DAC sous tension
+(EN_DA, bit 31 de DAC_DPC) que si le chemin analogique derriere ces
+commutateurs est connecte : dapm_set_mixer_path_status() lit leur valeur
+au bind et laisse la route ouverte tant qu'ils valent 0. La FIFO TX ne se
+vide alors jamais, le DMA se bloque apres 128 octets (32 trames stereo,
+hw_ptr fige) sans aucune interruption, et toute ecriture PCM expire en
+-EIO dans wait_for_avail() (sound/core/pcm_lib.c), donc sans message
+noyau (pcm_dbg). Mesure sur Transpeed 8K618-T (H618, noyau 7.0.14) :
+tous les widgets DAPM restent Off, 0x5096000+0x000 = 0 et le compteur
+d'IRQ du controleur DMA reste a 12 (remplissage initial de la FIFO) ;
+`amixer -c0 cset numid=5 on,on` (DAC Playback Switch) suffit a faire
+passer EN_DA a 1 et les ecritures PCM a reussir.
+
+On applique donc au probe les valeurs du BSP Allwinner
+(sunxi_codec_init() : 0x314 = DAC L/R -> mixer L/R, 0x310 = sortie ligne
+activee, LINEOUT_VOL = 0x1a) pour qu'un demarrage sans restauration de
+mixeur soit jouable et audible.
+
+---
+--- a/sound/soc/sunxi/sun4i-codec.c
++++ b/sound/soc/sunxi/sun4i-codec.c
+@@ -2148,6 +2148,8 @@
+ 	unsigned int reg_adc_rxdata;	/* RX FIFO offset for DMA config */
+ 	bool has_reset;
+ 	bool playback_only;
++	/* H616 : programmer au probe les defaults de la sortie ligne */
++	bool analog_out_defaults;
+ 	u32 dma_max_burst;
+ };
+ 
+@@ -2238,6 +2240,7 @@
+ 	.reg_dac_txdata	= SUN8I_H3_CODEC_DAC_TXDATA,
+ 	.has_reset	= true,
+ 	.dma_max_burst	= SUN4I_DMA_MAX_BURST,
++	.analog_out_defaults = true,
+ };
+ 
+ static const struct sun4i_codec_quirks suniv_f1c100s_codec_quirks = {
+@@ -2289,6 +2292,37 @@
+ };
+ MODULE_DEVICE_TABLE(of, sun4i_codec_of_match);
+ 
++/*
++ * H616 : les commutateurs de route DAC -> mixer et la sortie ligne sont a
++ * zero au reset. DAPM ne met le bloc numerique du DAC sous tension (EN_DA,
++ * bit 31 de DAC_DPC) que si le chemin analogique derriere ces
++ * commutateurs est connecte : dapm_set_mixer_path_status() lit leur valeur
++ * au bind et la route reste ouverte tant qu'ils valent 0. La FIFO TX ne se
++ * vide alors jamais, le DMA se bloque apres 128 octets (32 trames stereo)
++ * et toute ecriture PCM expire en -EIO dans wait_for_avail()
++ * (sound/core/pcm_lib.c). On applique les valeurs du BSP Allwinner
++ * (sunxi_codec_init() : LINEOUT_VOL = 0x1a, sortie ligne activee) pour
++ * qu'un demarrage sans restauration de mixeur soit jouable et audible.
++ */
++static void sun50i_h616_codec_init_analog(struct sun4i_codec *scodec)
++{
++	/* DAC gauche/droit -> mixers gauche/droit ("DAC Playback Switch") */
++	regmap_update_bits(scodec->regmap, SUN50I_H616_DAC_AC_MIXER_REG,
++			   BIT(SUN50I_H616_LMIX_LDAC) |
++			   BIT(SUN50I_H616_RMIX_RDAC),
++			   BIT(SUN50I_H616_LMIX_LDAC) |
++			   BIT(SUN50I_H616_RMIX_RDAC));
++
++	/* Sortie ligne activee, volume 0x1a (-7.5 dB), comme le BSP */
++	regmap_update_bits(scodec->regmap, SUN50I_H616_DAC_AC_DAC_REG,
++			   BIT(SUN50I_H616_LINEOUTL_EN) |
++			   BIT(SUN50I_H616_LINEOUTR_EN) |
++			   (0x1f << SUN50I_H616_LINEOUT_VOL),
++			   BIT(SUN50I_H616_LINEOUTL_EN) |
++			   BIT(SUN50I_H616_LINEOUTR_EN) |
++			   (0x1a << SUN50I_H616_LINEOUT_VOL));
++}
++
+ static int sun4i_codec_probe(struct platform_device *pdev)
+ {
+ 	struct snd_soc_card *card;
+@@ -2378,6 +2412,9 @@
+ 		return ret;
+ 	}
+ 
++	if (quirks->analog_out_defaults)
++		sun50i_h616_codec_init_analog(scodec);
++
+ 	/* DMA configuration for TX FIFO */
+ 	scodec->playback_dma_data.addr = res->start + quirks->reg_dac_txdata;
+ 	scodec->playback_dma_data.maxburst = quirks->dma_max_burst;

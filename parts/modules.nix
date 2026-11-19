@@ -69,6 +69,7 @@ let
         "0004-arm64-dts-h616-transpeed-sunxi-gmac.patch"
         "0004-net-phy-xpowers-acx00-backport.patch"
         "0005-clk-sunxi-ng-emac25m-from-pll-periph0.patch"
+        "0006-asoc-sun4i-codec-h616-analog-out-defaults.patch"
         "vp9-cedrus-7.0.14.patch"
         "cedrus-wait-dst-fences.patch"
         "cec-restore-phys-addr-hpd.patch"
