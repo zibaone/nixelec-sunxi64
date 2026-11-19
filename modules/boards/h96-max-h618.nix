@@ -23,14 +23,6 @@
   # Ethernet EMAC1 + PHY AC300 co-packagé sur MDIO **0x10**, RMII,
   # 24 MHz du PHY fabriqués par le canal 5 du PWM.
   hardware.nixbian.board = lib.mkDefault "h96-max-h618";
-
-  # Pas de carte son HDMI sur cette carte : `/proc/asound/cards` ne liste que
-  # `sun4i-codec` (mesure du 2026-11-19), et le DTS ne declare pas la carte son
-  # HDMI. Le defaut de famille `hw:1,0` ferait donc pointer Kodi sur un sink
-  # PipeWire inexistant (`PIPEWIRE:alsa_output.hdmi`), rendant *toutes* les
-  # sorties muettes. La sortie analogique, elle, est activee par l'hote
-  # (`havenos.kodi.audioAnalogDevice`).
-  nixelec.platform.hdmiPcm = lib.mkForce null;
   hardware.nixbian.kernelVendor = lib.mkDefault "edge";
 
   # Ethernet : le noyau de famille (parts/modules.nix) porte déjà les patches
