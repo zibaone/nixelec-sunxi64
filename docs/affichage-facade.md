@@ -185,11 +185,22 @@ session quand on les suppose identiques :
 
 | Reglage | H96 | Transpeed |
 |---|---|---|
-| Mode des deux lignes | open-drain + pull-up | **push-pull** (aucun pull-up sur la carte) |
+| Mode des deux lignes | **push-pull** depuis le 2026-11-19 (voir ci-dessous) | **push-pull** (aucun pull-up sur la carte) |
 | Sens des adresses | `0x68` = chiffre de **droite** | `0x68` = chiffre de **gauche** |
 | Nombre de positions | 5 | **4** |
 
-Les trois sont des options de l'outil (`--push-pull`, `--ltr`) ou du module
+**H96 : open-drain + pull-up ne suffit plus avec le noyau de famille
+(2026-11-19).** La donnée de carte était `open-drain` depuis le bring-up vendor.
+Après passage au noyau de famille, la dalle reste éteinte alors que `fd6xx`
+sort 0 : les lignes **sont** demandées et pilotées (`gpio-226 | fd6xx | out hi`,
+`gpio-227 | fd6xx | out lo` dans `/sys/kernel/debug/gpio`), le chip est le bon
+(`/dev/gpiochip1` → `300b000.pinctrl`, PH2/PH3 `UNCLAIMED` dans le pinmux), mais
+le pull-up interne ne ramène pas la ligne à l'état haut. En `--push-pull`,
+l'écran affiche immédiatement. `pushPull = true` est donc posé dans la donnée
+de carte H96, et non dans l'outil : c'est un fait de câblage vu par ce noyau,
+pas un défaut de `fd6xx`.
+
+Les trois réglages sont des options de l'outil (`--push-pull`, `--ltr`) ou du module
 (`nixelec.frontPanel.pushPull`, `.leftToRight`, `.text`).
 
 ## 4. Arbitrage : pilote noyau ou espace utilisateur
