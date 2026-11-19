@@ -285,16 +285,14 @@ in
         # fonctionne : `ffmpeg -f alsa hw:1,0` en stéréo 48 kHz sort sans
         # erreur, sans ASoC dans dmesg.
         #
-        # Sauf que deux cartes de la famille n'ont **pas** de carte son HDMI du
-        # tout : `/proc/asound/cards` n'y liste que `sun4i-codec` (mesuré le
-        # 2026-11-19 sur la H96 et la Transpeed, dont les DTS ne déclarent pas
-        # la carte son HDMI). Y publier `hw:1,0` fait pointer Kodi sur un sink
-        # PipeWire inexistant (`PIPEWIRE:alsa_output.hdmi`) et rend *toutes* les
-        # sorties muettes, analogique comprise. Le conditionnel vit ici, à côté
-        # de l'option : une définition dans le module de carte casse l'éval des
-        # configurations minimales qui n'importent pas ce module
-        # (`nixelec.platform` n'existe pas) et un `options ?` y crée une
-        # récursion infinie.
+        # La carte son HDMI existe bien depuis `sunxi-7.0-board-audio` (les
+        # trois noeuds `ahub*` du machine driver vendor), mais le kiosque ne
+        # s'en sert pas via ce champ : `hdmiPcm` alimente un sink PipeWire
+        # (`PIPEWIRE:alsa_output.hdmi`) dont le nommage n'est pas stable sur
+        # ces cartes. Kodi sort donc en `ALSA:default` et c'est l'hote qui
+        # decide de la carte (`havenos.kodi.alsaDefaultPcm`, mesure du
+        # 2026-11-19 sur la Transpeed). Laisser le defaut de famille
+        # `hw:1,0` ici publierait ce sink fantome.
         hdmiPcm =
           if
             builtins.elem config.hardware.nixbian.board [
