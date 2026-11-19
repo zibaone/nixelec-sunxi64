@@ -54,6 +54,8 @@ let
             "sunxi-7.0-hdmi-audio"
             "sunxi-7.0-cec"
             "sunxi-7.0-h96-max"
+            # Apres h96-max : son 0001 modifie la dtsi H96 que ce dernier cree.
+            "sunxi-7.0-board-audio"
             "sunxi-7.0-aic8800-kbuild"
           ];
 

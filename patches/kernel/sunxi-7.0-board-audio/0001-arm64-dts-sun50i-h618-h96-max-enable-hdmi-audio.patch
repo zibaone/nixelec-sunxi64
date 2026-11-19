@@ -1,0 +1,50 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: zibao <zibaone@proton.me>
+Date: Thu, 19 Nov 2026 15:40:00 +0100
+Subject: arm64: dts: sun50i-h618: activer la carte son HDMI sur la H96 Max
+
+Le machine driver vendor (`allwinner,sunxi-snd-mach`, apporte par la serie
+Armbian 0701) declare `ahub_dam_plat`, `ahub1_plat` et `ahub1_mach` dans
+`sun50i-h616.dtsi`, mais en `disabled` : seule la dtsi OrangePi Zero les
+active. Sans ces trois noeuds, le codec HDMI (`&hdmi`, qui porte deja
+`#sound-dai-cells` depuis sunxi-7.0-hdmi-audio/0001) n'a aucune carte ALSA
+en face : `/proc/asound/cards` ne liste que `sun4i-codec`, donc pas de sink
+HDMI, Kodi reste muet et son horloge audio bloque la lecture (saccades).
+
+Mesure du 2026-11-19 sur la Transpeed et la H96 : seules les cartes
+`sun4i-codec` sont presentes, et le PCM analogique echoue de toute facon en
+`-EIO`. Le DT compile avec ces trois noeuds expose bien
+`ahub1_mach { status = "okay"; soundcard-mach,codec { sound-dai = <&hdmi>; } }`.
+
+Signed-off-by: zibao <zibaone@proton.me>
+---
+ sun50i-h618-h96-max.dts | 19 +++++++++++++++++++
+ 1 file changed, 19 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h618-h96-max.dts b/arch/arm64/boot/dts/allwinner/sun50i-h618-h96-max.dts
+index 111111111111..222222222222 100644
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h618-h96-max.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h618-h96-max.dts
+@@ -320,3 +320,22 @@
+ &ir {
+ 	status = "okay";
+ };
++
++/*
++ * HDMI audio : le machine driver vendor (snd_sunxi_mach, apporte par la serie
++ * Armbian 0701) vit dans `sun50i-h616.dtsi` en `disabled`, et n'est active que
++ * pour l'OrangePi Zero. Sans ces trois noeuds, le codec HDMI (`&hdmi`, qui
++ * porte deja `#sound-dai-cells`) n'a pas de carte ALSA en face : aucun sink
++ * HDMI n'existe, Kodi reste muet et son horloge audio bloque la lecture.
++ */
++&ahub_dam_plat {
++	status = "okay";
++};
++
++&ahub1_plat {
++	status = "okay";
++};
++
++&ahub1_mach {
++	status = "okay";
++};
