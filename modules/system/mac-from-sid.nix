@@ -91,7 +91,16 @@ in
   config = lib.mkIf cfg.enable {
     systemd.services.mac-from-sid = {
       description = "MAC déterministe dérivée de la SID (aucune MAC gravée sur cette carte)";
-      wantedBy = [ "network-pre.target" ];
+      # `network-pre.target` seul ne suffit pas : c'est une cible *passive*, et
+      # rien ne la tire quand le pare-feu NixOS est désactivé (cas du kiosque).
+      # L'unité restait donc `inactive` au boot et la MAC aléatoire du noyau
+      # était conservée. On l'attache aussi à `systemd-networkd.service` : il
+      # la tire, et le `before=` ci-dessous garantit qu'elle s'exécute avant la
+      # configuration des liens.
+      wantedBy = [
+        "network-pre.target"
+        "systemd-networkd.service"
+      ];
       before = [
         "network-pre.target"
         "dhcpcd.service"
