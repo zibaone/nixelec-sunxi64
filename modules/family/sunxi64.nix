@@ -284,7 +284,22 @@ in
         # Kodi retombe sur la sortie analogique (TV muette). Le PCM brut, lui,
         # fonctionne : `ffmpeg -f alsa hw:1,0` en stéréo 48 kHz sort sans
         # erreur, sans ASoC dans dmesg.
-        hdmiPcm = lib.mkDefault "hw:1,0";
+        #
+        # Sauf que deux cartes de la famille n'ont **pas** de carte son HDMI du
+        # tout : `/proc/asound/cards` n'y liste que `sun4i-codec` (mesuré le
+        # 2026-11-19 sur la H96 et la Transpeed, dont les DTS ne déclarent pas
+        # la carte son HDMI). Y publier `hw:1,0` fait pointer Kodi sur un sink
+        # PipeWire inexistant (`PIPEWIRE:alsa_output.hdmi`) et rend *toutes* les
+        # sorties muettes, analogique comprise. Le conditionnel vit ici, à côté
+        # de l'option : une définition dans le module de carte casse l'éval des
+        # configurations minimales qui n'importent pas ce module
+        # (`nixelec.platform` n'existe pas) et un `options ?` y crée une
+        # récursion infinie.
+        hdmiPcm =
+          if builtins.elem config.hardware.nixbian.board [ "h96-max-h618" "transpeed-8k618-t" ] then
+            null
+          else
+            lib.mkDefault "hw:1,0";
         watchdog = {
           enable = lib.mkDefault true;
           maxTimeout = lib.mkDefault 16;
