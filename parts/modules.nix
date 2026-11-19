@@ -13,7 +13,11 @@ let
     # `extraConfig` : fragment ajouté APRÈS la configuration mesurée de la
     # famille. Sert aux noyaux dérivés qui ont besoin d'options en plus sans
     # toucher au noyau des kiosques (ex. noyau de transport : CONFIG_KEXEC).
-    { pkgs, extraConfig ? "", ... }:
+    {
+      pkgs,
+      extraConfig ? "",
+      ...
+    }:
     let
       lib = pkgs.lib;
       helpers = import (inputs.nixbian.outPath + "/metadata/nix/library.nix") { inherit pkgs; };
@@ -123,7 +127,12 @@ in
   # les noyaux dérivés d'un consommateur (HavenOS : noyau de transport FEL, qui
   # a besoin de CONFIG_KEXEC sans imposer un rebuild du noyau des kiosques).
   # Les patches et la configuration mesurée restent ici : un patch, une couche.
-  flake.lib.mkSunxi64Kernel = { pkgs, extraConfig ? "" }: familyKernel { inherit pkgs extraConfig; };
+  flake.lib.mkSunxi64Kernel =
+    {
+      pkgs,
+      extraConfig ? "",
+    }:
+    familyKernel { inherit pkgs extraConfig; };
 
   flake.nixosModules = {
     # Family base: nixbian + sunxi64 quirks (GPU, HDMI audio, console).
