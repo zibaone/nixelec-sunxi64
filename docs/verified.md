@@ -63,6 +63,8 @@ Measured on the bench on 2026-11-06/07, kernel `7.0.14` with patches 0001-0004.
 | USB dongle (SR9700) | `enu1`, DHCP, `ssh` | validated 2026-11-07: `192.168.1.23/24` via DHCP, default route, ping 3/3 from the PC, TCP/22 open, 10 MB in 13.09 s (≈ 6.4 Mbps) |
 | WiFi (BCM4334) | `iw dev wlan0 scan` | **measured 2026-11-16** after `045ad20`: 2.4/5 GHz scan. The earlier panic ~1.5 s after the radio started (write to read-only memory, RCU stalls, `sunxi-wdt` reset) was measured **before `4219ece`** (firmware, NVRAM, `wireless-regdb`, stable `wlan0`, `brcmfmac-wcc`, `firmwareCompression = "none"`). |
 | Toplevel after shared-layer evolutions | `nix eval --raw .#nixosConfigurations.transpeed-8k618-t.config.system.build.toplevel.drvPath` | verified 2026-11-08: evaluates in 3 s against the current nixelec family layer and nixbian metadata |
+| HDMI / Kodi GBM | `/sys/class/drm/card0-HDMI-A-1/status`, EDID, `dmesg` HPD, Kodi UI on screen | **measured 2026-11-19**: `connected`, 256-byte EDID, `read_hpd result: 1`, `sun8i-dw-hdmi … v2.12a`, Kodi UI displayed on the TV (the first cable was faulty — the connector stayed `disconnected` with a 0-byte EDID, which is the signature of a dead link, not of a driver problem) |
+| HDMI audio | `/proc/asound/cards` | **not available on this image (2026-11-19)**: only `sun4i-codec` is registered, no `dw-hdmi-i2s` sound card, so there is no HDMI sink to select |
 
 ## On the board (H96 Max H618)
 
@@ -79,9 +81,9 @@ measured are marked as such.
 | Noyau de famille (modèle B) | `nix eval --raw` + `nix derivation show` | un seul drv `vjqadd3w…-linux-7.0.14.drv` partagé par les trois kiosques H96/Transpeed/Zero3 ; **491 patches** = 476 Armbian + 9 locaux + 6 vendor ; `nixelec.kernelPackage` == `boot.kernelPackages.kernel` |
 | eMMC cold boot | boot with HDMI | **not measured** |
 | IR (`sunxi-ir`, overlay `ir@7040000`) | `ir-keytable -t` | **not measured**; the overlay path is only evaluated |
-| Front panel (FD655, PH2/PH3, text `H96`) | screen read | measured 2026-11-15; **confirmed again 2026-11-16** after `fd6xx --chip /dev/gpiochip1 --clk 226 --dat 227 --brightness 3 write H96`. The boot service was starting before `dev-gpiochip1.device`; fixed in `nixelec-common 722e300` (image redeploy pending). |
-| WiFi AIC8800D80 | `iw dev wlan0 scan` | **not measured** |
-| HDMI / Kodi GBM | `modetest`, 1080p playback | **not measured** |
+| Front panel (FD655, PH2/PH3, text `H96`) | screen read | measured 2026-11-15; **confirmed again 2026-11-19** with `pushPull = true` (the open-drain + internal pull-up no longer lights the panel with the family kernel, although `fd6xx` still exits 0 and the lines *are* requested). The boot service now writes `--push-pull` and the screen shows `H96` after an unattended boot. |
+| WiFi AIC8800D80 | `iw dev wlan0 link` | **measured 2026-11-19**: `wlan0` associated on 5 GHz (SSID `Livebox-4FE0`, 5540 MHz, −27 dBm), `192.168.1.54/24`, `wpa-psk` + `havenos-secrets` active after `havenos provision` |
+| HDMI / Kodi GBM | `/sys/class/drm/`, `dmesg`, `kodi-gbm` | **measured 2026-11-19**: the board DTS never enabled the display pipeline, so there was no DRM node at all and `kodi-gbm` restarted 102 times. With `&de`/`&hdmi` enabled and the connector declared (`d23e113`), a test DTB gives `card0`, `card0-HDMI-A-1`, `sun8i-dw-hdmi … v2.12a`, `kodi-gbm NRestarts=0`. Connector still `disconnected` — no screen plugged on this board yet. |
 
 ## Sources
 
