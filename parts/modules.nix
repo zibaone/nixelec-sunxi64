@@ -10,7 +10,10 @@ let
   # Transpeed et la H96. Les différences entre cartes tiennent dans les données
   # de carte (DTB, modules, services), pas dans quatre noyaux distincts.
   familyKernel =
-    { pkgs, ... }:
+    # `extraConfig` : fragment ajouté APRÈS la configuration mesurée de la
+    # famille. Sert aux noyaux dérivés qui ont besoin d'options en plus sans
+    # toucher au noyau des kiosques (ex. noyau de transport : CONFIG_KEXEC).
+    { pkgs, extraConfig ? "", ... }:
     let
       lib = pkgs.lib;
       helpers = import (inputs.nixbian.outPath + "/metadata/nix/library.nix") { inherit pkgs; };
@@ -78,7 +81,7 @@ let
       # Union des configurations mesurées sur la H96 et la Transpeed. Le
       # `family_config.json` de nixbian apporte déjà CONFIG_SUN50I_H6_PRCM_PPU=y;
       # ces lignes-ci sont l'Ethernet vendor et ses dépendances.
-      extraConfig = ''
+      familyExtraConfig = ''
         CONFIG_AC300_PHY=y
         CONFIG_XPOWERS_ACX00_PHY=m
         CONFIG_AW_GMAC=m
@@ -91,7 +94,8 @@ let
     in
     let
       kernel = helpers.buildKernel {
-        inherit meta extraConfig;
+        inherit meta;
+        extraConfig = familyExtraConfig + extraConfig;
         extraPatches = localPatches ++ vendorPatches;
         dtb_list = [
           "allwinner/sun50i-h618-orangepi-zero3.dtb"
@@ -115,6 +119,12 @@ let
     };
 in
 {
+  # Noyau de famille, avec un fragment de configuration optionnel. Exposé pour
+  # les noyaux dérivés d'un consommateur (HavenOS : noyau de transport FEL, qui
+  # a besoin de CONFIG_KEXEC sans imposer un rebuild du noyau des kiosques).
+  # Les patches et la configuration mesurée restent ici : un patch, une couche.
+  flake.lib.mkSunxi64Kernel = { pkgs, extraConfig ? "" }: familyKernel { inherit pkgs extraConfig; };
+
   flake.nixosModules = {
     # Family base: nixbian + sunxi64 quirks (GPU, HDMI audio, console).
     # Le noyau est produit ici, plus par nixbian (modèle B).
