@@ -146,6 +146,7 @@ in
       {
         imports = [
           inputs.nixbian.nixosModules.nixbian
+          inputs.nixelec-common.nixosModules.video-codecs
           ../modules/family/sunxi64.nix
         ];
 

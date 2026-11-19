@@ -80,6 +80,13 @@ in
 
   config = lib.mkMerge [
     {
+      # Mesure du 2026-11-19 sur H96 Max H618 et Transpeed 8K618-T (cedrus) :
+      # `v4l2-ctl --list-formats-out` expose MG2S S264 S265 VP8F VP9F et **pas**
+      # AV1F. Le VP9 est decode par le materiel (236 IRQ cedrus pour ~240 images
+      # d'un VP9 1080p) ; une rendition AV1 donne une image noire avec le son.
+      # Une carte peut surcharger cette liste si sa mesure differe.
+      nixelec.video.unsupportedCodecs = [ "av01" ];
+
       assertions = [
         {
           assertion =
