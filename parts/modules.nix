@@ -94,6 +94,54 @@ let
         CONFIG_DWMAC_SUN8I=m
         CONFIG_MODULE_ALLOW_BTF_MISMATCH=y
         CONFIG_PWM_SUNXI_ENHANCE=m
+
+        # ────────────────────────────────────────────────────────────────
+        #  kexec — étage 2 de l'installation (nixos-anywhere)
+        #
+        #  `nixos-anywhere --kexec` charge le noyau de l'installateur par
+        #  `kexec_load`. Mesuré sur le noyau déployé (2026-11-19) :
+        #  `# CONFIG_KEXEC is not set` → « kexec_load failed: Function not
+        #  implemented ».
+        #
+        #  Ces deux symboles sont dans la configuration de FAMILLE, pas dans
+        #  un noyau dérivé : les deux box eMMC (H96, Transpeed) n'ont pas de
+        #  slot SD, donc leur seul transport est FEL — à 316 Ko/s. Un payload
+        #  minimal (sans `nix`) plus un tarball kexec coûte ~8 min de
+        #  transfert ; un payload qui embarque `nix` en coûterait 18. Le
+        #  second noyau, lui, coûtait un build de 4 h qui n'était jamais en
+        #  cache. Un noyau, une dérivation, un cache.
+        #
+        #  Contrepartie assumée : `kexec` est compilé pour les kiosques. Il
+        #  exige `CAP_SYS_BOOT` (`kernel/kexec_core.c:1117`,
+        #  `kexec_load_permitted`) et se coupe à chaud par
+        #  `kernel.kexec_load_disabled=1` — posé sur les kiosques, absent du
+        #  transport.
+        # ────────────────────────────────────────────────────────────────
+        CONFIG_KEXEC=y
+        CONFIG_KEXEC_FILE=y
+
+        # ────────────────────────────────────────────────────────────────
+        #  Bornes de randomisation d'adresse, écrites explicitement
+        #
+        #  La configuration Armbian est un `savedefconfig` : les symboles
+        #  restés à leur valeur par défaut n'y figurent pas. Or nixpkgs
+        #  (25.11+) calcule `55-nixos-aslr-entropy.conf` en grepant
+        #  `CONFIG_ARCH_MMAP_RND_BITS_MAX` dans
+        #  `boot.kernelPackages.kernel.configfile`, et sort en 1 **sans
+        #  message** si le motif manque — ce qui ressemble à un échec de
+        #  construction aarch64. Mesuré le 2026-11-20 sur le payload FEL de la
+        #  H96 (72 dérivations, arrêt sur celle-ci, `builder failed with exit
+        #  code 1`, aucun log).
+        #
+        #  Valeurs arm64 / VA 48 bits pour 7.0.x : celles que `olddefconfig`
+        #  matérialise dans la configuration finale.
+        # ────────────────────────────────────────────────────────────────
+        CONFIG_ARCH_MMAP_RND_BITS=18
+        CONFIG_ARCH_MMAP_RND_BITS_MIN=18
+        CONFIG_ARCH_MMAP_RND_BITS_MAX=33
+        CONFIG_ARCH_MMAP_RND_COMPAT_BITS=11
+        CONFIG_ARCH_MMAP_RND_COMPAT_BITS_MIN=11
+        CONFIG_ARCH_MMAP_RND_COMPAT_BITS_MAX=16
       '';
     in
     let
