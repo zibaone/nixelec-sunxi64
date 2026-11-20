@@ -222,10 +222,15 @@ jobs:
           # ni usbnet : le BTF du noyau est rejete). Sans ces deux chemins au cache,
           # la seule voie de test est un noyau recompile sous qemu, mesure a plus de 4 h.
           transpeed_modules=$(nix path-info "${override[@]}" .#nixosConfigurations.transpeed-8k618-t.config.boot.kernelPackages.kernel.modules)
+          # Variante netboot d'U-Boot : `havenos load --netboot` ne pousse que
+          # celle-ci par le FEL (~0,9 Mio) et le payload arrive par TFTP. Sans
+          # ce push, un utilisateur public devrait compiler U-Boot pour
+          # installer une carte.
+          uboot_netboot=$(nix path-info "${override[@]}" .#packages.aarch64-linux.uboot-h96-max-h618-netboot)
           cachix push "$CACHE" "$toplevel" "$h96" "$transpeed" "$driver" "$gmac" "$kernel_dev" \
-            "$kernel_modules" "$h96_modules" "$transpeed_modules"
+            "$kernel_modules" "$h96_modules" "$transpeed_modules" "$uboot_netboot"
           for p in "$toplevel" "$h96" "$transpeed" "$driver" "$gmac" "$kernel_dev" \
-            "$kernel_modules" "$h96_modules" "$transpeed_modules"; do
+            "$kernel_modules" "$h96_modules" "$transpeed_modules" "$uboot_netboot"; do
             h=$(basename "$p" | cut -c1-32)
             code=$(curl -s -o /dev/null -w '%{http_code}' "https://${CACHE}.cachix.org/$h.narinfo")
             echo "$code  $(basename "$p")"
