@@ -226,7 +226,11 @@ jobs:
           # celle-ci par le FEL (~0,9 Mio) et le payload arrive par TFTP. Sans
           # ce push, un utilisateur public devrait compiler U-Boot pour
           # installer une carte.
-          uboot_netboot=$(nix path-info "${override[@]}" .#packages.aarch64-linux.uboot-h96-max-h618-netboot)
+          # `nix build` et non `nix path-info` : ce paquet n'est construit par
+          # aucune étape précédente, et `cachix push` refuse un chemin absent du
+          # store (« is not valid »). Les autres entrées sortent de fermetures
+          # déjà construites plus haut.
+          uboot_netboot=$(nix build --no-link --print-out-paths "${override[@]}" .#packages.aarch64-linux.uboot-h96-max-h618-netboot)
           cachix push "$CACHE" "$toplevel" "$h96" "$transpeed" "$driver" "$gmac" "$kernel_dev" \
             "$kernel_modules" "$h96_modules" "$transpeed_modules" "$uboot_netboot"
           for p in "$toplevel" "$h96" "$transpeed" "$driver" "$gmac" "$kernel_dev" \
