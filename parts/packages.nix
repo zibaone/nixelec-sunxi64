@@ -53,6 +53,16 @@
               CONFIG_SUNXI_GMAC=y
               CONFIG_PHYLIB=y
 
+              # Ces cartes n'ont AUCUNE MAC en usine (mesure du 2026-11-15 :
+              # les 256 octets lisibles de la SID ne contiennent ni OUI ni
+              # adresse). Sans MAC, eth_post_probe rejette le peripherique
+              # (« No valid MAC address found ») et `dhcp` ne trouve rien.
+              # Le noyau derive la sienne de la SID (nixelec.macFromSid) ;
+              # U-Boot n'a pas cet algorithme, on lui fait donc tirer une
+              # adresse aleatoire locale. A aligner sur la SID quand le
+              # netboot deviendra le chemin nominal.
+              CONFIG_NET_RANDOM_ETHADDR=y
+
               # ──────────────────────────────────────────────────────────────
               #  Ethernet par dongle USB — filet de sécurité
               #
