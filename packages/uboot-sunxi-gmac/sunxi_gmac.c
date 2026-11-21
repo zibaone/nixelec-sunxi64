@@ -120,6 +120,33 @@
 #define PIO_MUX_FUNC2		0x2
 #define PIO_CFG_MASK		0xf
 
+/*
+ * PWM : horloge du PHY AC300.
+ *
+ * Le PHY co-packagé n'a pas de quartz : il est horlogé par le canal 5 du PWM,
+ * dont la sortie arrive sur PA12. Mesuré côté noyau : à 42 ns de période la
+ * PHY est dix fois trop vite, à 500 ns elle se lie — d'où 2 MHz, que le PHY
+ * multiplie par 12 pour obtenir ses 24 MHz.
+ *
+ * On reproduit la configuration du `pwm-sunxi-enhance` que le noyau utilise
+ * (patch Armbian `drv-pwm-sun50i-h616`) telle que la demande le DTS :
+ * `pwms = <&pwm 5 500 0>` + `clk_bypass_output = <1>`. U-Boot n'a ni ce
+ * pilote ni cette horloge dans son CCU : les registres sont écrits à la main.
+ */
+#define PWM_BASE		0x0300A000
+#define PWM_PCCR45		0x0028	/* configuration de la paire 4/5 */
+#define PWM_PER			0x0040	/* activation des canaux */
+#define PWM_PCR(n)		(0x0060 + 0x20 * (n))
+#define PWM_PPR(n)		(0x0064 + 0x20 * (n))
+#define PWM_PAIR_GATE		BIT(4)
+#define PWM_CH5_BYPASS		BIT(6)	/* canal impair de la paire */
+#define PWM_ACT_STA		BIT(8)	/* polarité normale */
+#define PWM_EPHY_CHANNEL	5
+#define PWM_EPHY_CYCLES		12	/* 24 MHz / 12 = 2 MHz */
+#define CCU_PWM_BUS		0x07ac	/* porte/reset du bus PWM */
+#define CCU_PWM_BUS_GATE	BIT(0)
+#define CCU_PWM_BUS_RST		BIT(16)
+
 /* AC300 : identifiants et calibration (vendor `sunxi-ephy.c`) */
 #define AC300_PHY_ID		0x00441400
 #define EPHY_CALI_BIT		BIT(21)
@@ -359,6 +386,57 @@ static void sunxi_gmac_mux_rmii(void)
 	writel(cfg, pio + PIO_PA_CFG1);
 }
 
+/*
+ * Horloge 2 MHz du PHY AC300 par PWM5 (broche PA12).
+ *
+ * Le PHY répond au MDIO grâce au 25 MHz du CCU, mais son PLL et son récepteur
+ * RMII ont besoin de cette horloge : sans elle le lien ne monte jamais.
+ */
+static void sunxi_gmac_ephy_clock(void)
+{
+	void __iomem *ccu = map_physmem(CCU_BASE, 0x1000, MAP_NOCACHE);
+	void __iomem *pwm = map_physmem(PWM_BASE, 0x100, MAP_NOCACHE);
+	void __iomem *pio = map_physmem(SUNXI_PIO_BASE, 0x400, MAP_NOCACHE);
+	u32 v;
+
+	if (!ccu || !pwm || !pio)
+		return;
+
+	/* PA12 en fonction 2 = pwm5 (seule broche PWM5 du H616) */
+	v = readl(pio + PIO_PA_CFG1);
+	v &= ~(PIO_CFG_MASK << 16);
+	v |= (PIO_MUX_FUNC2 << 16);
+	writel(v, pio + PIO_PA_CFG1);
+
+	/* porte et reset du bus PWM (CCU 0x7ac, bits 0 et 16) */
+	v = readl(ccu + CCU_PWM_BUS);
+	v |= CCU_PWM_BUS_GATE | CCU_PWM_BUS_RST;
+	writel(v, ccu + CCU_PWM_BUS);
+	mdelay(1);
+
+	/* paire 4/5 : source OSC24M (bit 7 à 0), diviseur /1, porte de paire,
+	 * et sortie en bypass pour le canal 5 */
+	v = readl(pwm + PWM_PCCR45);
+	v &= ~(0xf | PWM_PAIR_GATE | BIT(5) | PWM_CH5_BYPASS | BIT(7));
+	v |= PWM_PAIR_GATE | PWM_CH5_BYPASS;
+	writel(v, pwm + PWM_PCCR45);
+
+	/* canal 5 : prescal_k = 0 (÷1), polarité normale */
+	v = readl(pwm + PWM_PCR(PWM_EPHY_CHANNEL));
+	v &= ~0xff;
+	v |= PWM_ACT_STA;
+	writel(v, pwm + PWM_PCR(PWM_EPHY_CHANNEL));
+
+	/* 12 cycles de 24 MHz par période, rapport 50 % */
+	writel(((PWM_EPHY_CYCLES - 1) << 16) | (PWM_EPHY_CYCLES / 2),
+	       pwm + PWM_PPR(PWM_EPHY_CHANNEL));
+
+	/* active le canal */
+	v = readl(pwm + PWM_PER);
+	v |= BIT(PWM_EPHY_CHANNEL);
+	writel(v, pwm + PWM_PER);
+}
+
 static int sunxi_gmac_start(struct udevice *dev)
 {
 	struct sunxi_gmac_priv *priv = dev_get_priv(dev);
@@ -367,17 +445,32 @@ static int sunxi_gmac_start(struct udevice *dev)
 	int i, id;
 
 	sunxi_gmac_mux_rmii();
+	sunxi_gmac_ephy_clock();
 
 	/* CCU : porte EPHY 25M (PLL_PERI0 / 24 = 25 MHz) */
 	val = readl((void __iomem *)(CCU_BASE + CCU_EPHY_25M));
 	val |= CCU_EPHY_25M_GATE;
 	writel(val, (void __iomem *)(CCU_BASE + CCU_EPHY_25M));
 
+	dev_err(dev, "CCU 970=%08x 97c=%08x 7ac=%08x | PIO PA_CFG0=%08x PA_CFG1=%08x\n",
+		readl((void __iomem *)(CCU_BASE + CCU_EPHY_25M)),
+		readl((void __iomem *)(CCU_BASE + 0x97c)),
+		readl((void __iomem *)(CCU_BASE + CCU_PWM_BUS)),
+		readl((void __iomem *)(SUNXI_PIO_BASE + PIO_PA_CFG0)),
+		readl((void __iomem *)(SUNXI_PIO_BASE + PIO_PA_CFG1)));
+	dev_err(dev, "PWM5 PCCR45=%08x PCR=%08x PPR=%08x PER=%08x\n",
+		readl((void __iomem *)(PWM_BASE + PWM_PCCR45)),
+		readl((void __iomem *)(PWM_BASE + PWM_PCR(PWM_EPHY_CHANNEL))),
+		readl((void __iomem *)(PWM_BASE + PWM_PPR(PWM_EPHY_CHANNEL))),
+		readl((void __iomem *)(PWM_BASE + PWM_PER)));
+
 	/*
 	 * Reset logiciel du MAC, BORNÉ. Une horloge MAC absente laisse le bit
 	 * posé indéfiniment : sans borne, U-Boot se fige ici sans rien dire
 	 * (mesuré sur la H96 : plus aucune sortie console après `Net:`).
 	 */
+	dev_err(dev, "MAC avant reset : CTL1=%08x\n",
+		readl(priv->base + GMAC_BASIC_CTL1));
 	writel(SOFT_RST, priv->base + GMAC_BASIC_CTL1);
 	for (i = 0; i < 200; i++) {
 		if (!(readl(priv->base + GMAC_BASIC_CTL1) & SOFT_RST))
@@ -395,7 +488,8 @@ static int sunxi_gmac_start(struct udevice *dev)
 	/* PHY */
 	id = gmac_mdio_read(priv, 0x02);
 	id = (id << 16) | (gmac_mdio_read(priv, 0x03) & 0xffff);
-	dev_info(dev, "PHY id %08x (attendu %08x)\n", id, AC300_PHY_ID);
+	dev_err(dev, "PHY id %08x (attendu %08x), BMCR=%04x BMSR=%04x\n",
+		id, AC300_PHY_ID, gmac_mdio_read(priv, 0x00), gmac_mdio_read(priv, 0x01));
 
 	gmac_ac300_enable(priv);
 	gmac_ephy_cali(priv);
@@ -409,7 +503,11 @@ static int sunxi_gmac_start(struct udevice *dev)
 			break;
 	}
 	if (i == 50)
-		dev_warn(dev, "lien PHY non établi après 500 ms\n");
+		dev_err(dev, "lien PHY non établi après 500 ms (BMSR=%04x)\n",
+			gmac_mdio_read(priv, 0x01));
+	else
+		dev_err(dev, "lien PHY établi (BMSR=%04x)\n",
+			gmac_mdio_read(priv, 0x01));
 
 	/* anneaux */
 	priv->tx_head = 0;
@@ -647,7 +745,9 @@ static int sunxi_gmac_probe(struct udevice *dev)
 
 	ret = reset_get_by_name(dev, "gmac", &rst);
 	if (!ret)
-		reset_deassert(&rst);
+		dev_err(dev, "reset « gmac » : deassert → %d\n", reset_deassert(&rst));
+	else
+		dev_err(dev, "reset « gmac » absent (%d) : le MAC reste en reset\n", ret);
 
 	/* fenêtre DMA basse : le GMAC n'adresse que 32 bits */
 	priv->dma = map_physmem(GMAC_DMA_BASE, GMAC_DMA_SIZE, MAP_NOCACHE);
