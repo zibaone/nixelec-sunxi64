@@ -1,0 +1,57 @@
+--- a/drivers/net/Kconfig
++++ b/drivers/net/Kconfig
+@@ -764,6 +764,14 @@
+ 	help
+ 	  This driver supports the Allwinner based SUN4I Ethernet MAC.
+ 
++config SUNXI_GMAC
++	bool "Allwinner H616/H618 GMAC support"
++	depends on ARCH_SUNXI
++	help
++	  Portage U-Boot du pilote vendor sunxi-gmac, pour les SoC H616/H618
++	  dont l'EMAC n'est couvert par aucun pilote mainline. Mesure sur la
++	  H96 Max H618 : EMAC1 en RMII avec le PHY AC300 co-packagé.
++
+ config SUN8I_EMAC
+ 	bool "Allwinner Sun8i Ethernet MAC support"
+ 	select PHYLIB
+--- a/drivers/net/Makefile
++++ b/drivers/net/Makefile
+@@ -110,6 +110,7 @@
+ obj-$(CONFIG_SNI_NETSEC) += sni_netsec.o
+ obj-$(CONFIG_SUN4I_EMAC) += sunxi_emac.o
+ obj-$(CONFIG_SUN8I_EMAC) += sun8i_emac.o
++obj-$(CONFIG_SUNXI_GMAC) += sunxi_gmac.o
+ obj-$(CONFIG_TSEC_ENET) += tsec.o fsl_mdio.o
+ obj-$(CONFIG_TULIP) += dc2114x.o
+ obj-$(CONFIG_VSC7385_ENET) += vsc7385.o
+--- a/dts/upstream/src/arm64/allwinner/sun50i-h618-transpeed-8k618-t.dts
++++ b/dts/upstream/src/arm64/allwinner/sun50i-h618-transpeed-8k618-t.dts
+@@ -198,3 +198,27 @@
+ &usbphy {
+ 	status = "okay";
+ };
++
++/*
++ * Ethernet : le RJ45 est sur EMAC1, relie au PHY AC300 co-packaged.
++ * Le dtsi amont ne declare que emac0, desactive, et aucun pilote mainline
++ * ne recoit de trame sur cette carte (voir le noyau : sunxi-gmac vendor).
++ * Deux proprietes mesurees : syscfg 0x3fe1 (la valeur du BSP coupe l'EPHY)
++ * et no-crc-check (le MAC compte 7 octets de preambule dans la longueur).
++ */
++&{/soc} {
++	emac1: ethernet@5030000 {
++		compatible = "allwinner,sun50i-h616-gmac";
++		reg = <0x05030000 0x10000>, <0x03000034 0x4>;
++		interrupts = <GIC_SPI 15 IRQ_TYPE_LEVEL_HIGH>;
++		clocks = <&ccu CLK_BUS_EMAC1>;
++		clock-names = "gmac";
++		resets = <&ccu RST_BUS_EMAC1>;
++		reset-names = "gmac";
++		phy-mode = "rmii";
++		phy-addr = <0>;
++		allwinner,syscfg-value = <0x3fe1>;
++		allwinner,no-crc-check;
++		status = "okay";
++	};
++};

@@ -30,9 +30,44 @@
         pkgsAarch64.buildUBoot (
           base.drvAttrs
           // {
+            # ──────────────────────────────────────────────────────────────
+            #  Pilote Ethernet H616 (portage U-Boot du vendor sunxi-gmac)
+            #
+            #  U-Boot 2025.04 n'a aucun pilote pour l'EMAC du H616 : la table
+            #  de compatibles de `sun8i_emac.c` s'arrête à A83T/H3/R40/V3S.
+            #  Le portage vit dans `packages/uboot-sunxi-gmac/` : le fichier
+            #  est copié dans `drivers/net/`, et le patch ajoute l'entrée
+            #  Kconfig, la règle Makefile et le nœud `emac1` du DTS.
+            # ──────────────────────────────────────────────────────────────
+            patches = (base.drvAttrs.patches or [ ]) ++ [
+              ./../packages/uboot-sunxi-gmac/0001-net-sunxi-gmac.patch
+            ];
+            postPatch = (base.drvAttrs.postPatch or "") + ''
+              cp ${./../packages/uboot-sunxi-gmac/sunxi_gmac.c} drivers/net/sunxi_gmac.c
+            '';
             extraConfig = ''
-              CONFIG_BOOTCOMMAND="setenv boot_targets dhcp; run distro_bootcmd"
+              CONFIG_BOOTCOMMAND="usb start; setenv boot_targets usb0 dhcp; run distro_bootcmd"
               CONFIG_BOOTDELAY=1
+
+              # Pilote GMAC vendor porté (EMAC1 + PHY AC300 en RMII).
+              CONFIG_SUNXI_GMAC=y
+              CONFIG_PHYLIB=y
+
+              # ──────────────────────────────────────────────────────────────
+              #  Ethernet par dongle USB — filet de sécurité
+              #
+              #  Tant que le portage n'est pas validé sur la carte, le dongle
+              #  USB reste le chemin sûr : l'hôte USB fonctionne déjà (le
+              #  defconfig transpeed a `USB_EHCI_HCD` et `USB_OHCI_HCD`, et
+              #  U-Boot énumère 4 bus), et ces pilotes rendent `dhcp`/`tftp`
+              #  disponibles sans une ligne de code. Le payload de 247 Mio
+              #  arrive alors en ~25 s au lieu de 13 min de FEL.
+              # ──────────────────────────────────────────────────────────────
+              CONFIG_USB_HOST_ETHER=y
+              CONFIG_USB_ETHER_ASIX=y
+              CONFIG_USB_ETHER_ASIX88179=y
+              CONFIG_USB_ETHER_SMSC95XX=y
+              CONFIG_USB_ETHER_RTL8152=y
             '';
           }
         );
