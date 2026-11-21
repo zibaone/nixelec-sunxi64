@@ -84,7 +84,18 @@
 #define DESC_BUFSIZE		11
 #define CHAIN_MODE_OFFSET	24
 #define SF_DMA_MODE		1
-#define RX_PKT_OK		0x7FFFB77C
+/*
+ * Bits d'erreur de RDES0 que le vendor teste quand `no-crc-check` est posé.
+ * `RX_PKT_OK` (0x7FFFB77C) du vendor n'est PAS un masque de validité : il
+ * recouvre le champ de longueur et des bits d'erreur, d'où un test qui échoue
+ * sur toute trame. Il n'est conservé que comme référence de décodage.
+ */
+#define RX_MII_ERR		BIT(3)
+#define RX_OVER_ERR		BIT(11)
+#define RX_LEN_ERR		BIT(12)
+#define RX_DESC_ERR		BIT(14)
+#define RX_ERR_SUM		BIT(15)
+#define GMAC_FCS_LEN		4
 #define RX_LEN_MASK		0x3FFF0000
 #define RX_LEN_SHIFT		16
 
@@ -192,6 +203,7 @@ struct sunxi_gmac_priv {
 	int rx_tail;
 	int phy_addr;
 	bool started;
+	int rx_seen;
 };
 
 /* ── MDIO ──────────────────────────────────────────────────────────────── */
@@ -529,7 +541,15 @@ static int sunxi_gmac_start(struct udevice *dev)
 	writel(val, priv->base + GMAC_TX_CTL0);
 
 	val = readl(priv->base + GMAC_RX_CTL0);
-	val |= (1 << CRC_OFFSET) | (1 << STRIP_FCS_OFFSET) | (1 << JUMBO_EN_OFFSET);
+	val |= (1 << STRIP_FCS_OFFSET) | (1 << JUMBO_EN_OFFSET);
+	/* `no-crc-check` : le MAC compte 7 octets de préambule dans la longueur,
+	 * le CRC de chaque trame est donc faux alors que les données sont
+	 * saines (mesure du vendor, kernel 7.0.14). Le bit 27 arme le contrôle
+	 * CRC : on le laisse à zéro quand la carte le demande. */
+	if (!priv->no_crc_check)
+		val |= (1 << CRC_OFFSET);
+	else
+		val &= ~(1 << CRC_OFFSET);
 	writel(val, priv->base + GMAC_RX_CTL0);
 
 	writel(MDIO_MDC_DIV << MDIO_MDC_DIV_OFF, priv->base + GMAC_MDIO_ADDR);
@@ -621,20 +641,49 @@ static int sunxi_gmac_recv(struct udevice *dev, int flags, uchar **packetp)
 	struct sunxi_gmac_priv *priv = dev_get_priv(dev);
 	struct sunxi_gmac_desc *d = &priv->rx_ring[priv->rx_tail];
 	ulong buf;
+	u32 st;
 	int len;
 
 	invalidate_dcache_range((ulong)d, (ulong)d + sizeof(*d));
-	if (d->status & OWN_DMA)
+	st = d->status;
+	if (st & OWN_DMA)
 		return -EAGAIN;
 
-	if ((d->status & RX_PKT_OK) != RX_PKT_OK) {
-		/* trame en erreur : on recycle et on la jette */
+	if (!priv->rx_seen) {
+		priv->rx_seen = 1;
+		dev_err(dev, "première trame RX : RDES0=%08x len=%u\n",
+			st, (st & RX_LEN_MASK) >> RX_LEN_SHIFT);
+	}
+
+	/*
+	 * Le portage avait repris la macro `RX_PKT_OK` du vendor (0x7FFFB77C)
+	 * comme un masque de bits « tous bons », or c'est un masque de
+	 * DÉCODAGE : il recouvre aussi le champ de longueur, donc le test
+	 * échoue sur toute trame et le pilote jetait chaque paquet reçu
+	 * (aucun bail DHCP possible, même avec un lien sain).
+	 *
+	 * Le vendor, quand `allwinner,no-crc-check` est posé, ne regarde que
+	 * ces quatre bits : longueur, débordement, erreur MII, descripteur.
+	 * `crc`/`ipch` sont ignorés — mesuré sur cette carte : le MAC compte
+	 * 7 octets de préambule dans la longueur et le CRC de chaque trame est
+	 * faux alors que les données sont saines.
+	 */
+	if (st & (RX_LEN_ERR | RX_OVER_ERR | RX_MII_ERR | RX_DESC_ERR)) {
 		gmac_rx_refill(priv, priv->rx_tail);
 		priv->rx_tail = (priv->rx_tail + 1) % GMAC_DESC_NUM;
 		return -EAGAIN;
 	}
 
-	len = (d->status & RX_LEN_MASK) >> RX_LEN_SHIFT;
+	/* La longueur du descripteur compte les 4 octets de FCS, que le MAC
+	 * n'a pas retirés malgré STRIP_FCS (mesure du vendor : sans cette
+	 * soustraction, `skb_put` passe 4 octets de FCS à la pile). */
+	len = ((st & RX_LEN_MASK) >> RX_LEN_SHIFT) - GMAC_FCS_LEN;
+	if (len <= 0) {
+		gmac_rx_refill(priv, priv->rx_tail);
+		priv->rx_tail = (priv->rx_tail + 1) % GMAC_DESC_NUM;
+		return -EAGAIN;
+	}
+
 	buf = (ulong)priv->rx_buf + priv->rx_tail * GMAC_BUF_SZ;
 	invalidate_dcache_range(buf, buf + len);
 
