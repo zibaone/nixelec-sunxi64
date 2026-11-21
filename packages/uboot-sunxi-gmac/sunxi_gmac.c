@@ -104,6 +104,22 @@
 #define CCU_EPHY_25M		0x0970
 #define CCU_EPHY_25M_GATE	(BIT(31) | BIT(30))
 
+/*
+ * PIO : mux des broches.
+ *
+ * Le pinctrl H616 d'U-Boot ne déclare que `emac0`
+ * (`drivers/pinctrl/sunxi/pinctrl-sunxi.c`) : aucun `pinctrl-0` ne peut
+ * poser le mux d'EMAC1, celui que le noyau exprime par
+ * `SUNXI_FUNCTION(0x2, "emac1")` sur PA0-PA9
+ * (`drivers/pinctrl/sunxi/pinctrl-sun50i-h616.c`). On écrit donc le mux à
+ * la main, avec les mêmes valeurs que le noyau.
+ */
+#define SUNXI_PIO_BASE		0x0300B000
+#define PIO_PA_CFG0		0x0000	/* PA0-PA7 : 4 bits par broche */
+#define PIO_PA_CFG1		0x0004	/* PA8-PA15 */
+#define PIO_MUX_FUNC2		0x2
+#define PIO_CFG_MASK		0xf
+
 /* AC300 : identifiants et calibration (vendor `sunxi-ephy.c`) */
 #define AC300_PHY_ID		0x00441400
 #define EPHY_CALI_BIT		BIT(21)
@@ -318,12 +334,39 @@ static void gmac_rx_refill(struct sunxi_gmac_priv *priv, int idx)
 
 /* ── eth_ops ───────────────────────────────────────────────────────────── */
 
+/*
+ * Mux RMII d'EMAC1 : PA0-PA9 en fonction 2.
+ *
+ * Sans lui le MAC est bien horlogé et adressable, mais ses broches restent
+ * des GPIO : le PHY ne voit ni MDC/MDIO ni les lignes RMII, et le lien ne
+ * monte jamais (mesuré : `carrier=0`, aucune requête DHCP).
+ */
+static void sunxi_gmac_mux_rmii(void)
+{
+	void __iomem *pio = map_physmem(SUNXI_PIO_BASE, 0x400, MAP_NOCACHE);
+	u32 cfg;
+
+	if (!pio)
+		return;
+
+	/* PA0-PA7 : ERXD1, ERXD0, ECRS_DV, ERXERR, ETXD1, ETXD0, ETXCK, ETXEN */
+	writel(0x22222222, pio + PIO_PA_CFG0);
+
+	/* PA8/PA9 = MDC/MDIO ; le reste de CFG1 (PA10-PA15) est préservé */
+	cfg = readl(pio + PIO_PA_CFG1);
+	cfg &= ~((PIO_CFG_MASK << 0) | (PIO_CFG_MASK << 4));
+	cfg |= (PIO_MUX_FUNC2 << 0) | (PIO_MUX_FUNC2 << 4);
+	writel(cfg, pio + PIO_PA_CFG1);
+}
+
 static int sunxi_gmac_start(struct udevice *dev)
 {
 	struct sunxi_gmac_priv *priv = dev_get_priv(dev);
 	struct eth_pdata *pdata = dev_get_plat(dev);
 	u32 val;
 	int i, id;
+
+	sunxi_gmac_mux_rmii();
 
 	/* CCU : porte EPHY 25M (PLL_PERI0 / 24 = 25 MHz) */
 	val = readl((void __iomem *)(CCU_BASE + CCU_EPHY_25M));
