@@ -46,7 +46,17 @@
               cp ${./../packages/uboot-sunxi-gmac/sunxi_gmac.c} drivers/net/sunxi_gmac.c
             '';
             extraConfig = ''
-              CONFIG_BOOTCOMMAND="usb start; setenv boot_targets usb0 dhcp; run distro_bootcmd"
+              # `pxe` et non `dhcp` : la cible `dhcp` de distro_bootcmd source
+              # le fichier rendu par l'option 67 (variable scriptaddr) et
+              # échoue sur une entrée pxelinux, qui est du texte. La cible
+              # `pxe` fait `dhcp; pxe get; pxe boot`, donc elle lit la même
+              # entrée et en tire KERNEL/INITRD/FDT/APPEND.
+              #
+              # `initrd_high=~0` : bootm reloge le ramdisk hors de `bootm_size`
+              # (23 Mio) vers le haut de la RAM ; une copie de 211 Mio arrive
+              # corrompue (« Initramfs unpacking failed »), mesuré en FEL. En
+              # 64 bits, seul `~0` coupe la relocation.
+              CONFIG_BOOTCOMMAND="usb start; setenv initrd_high 0xffffffffffffffff; setenv fdt_high 0xffffffffffffffff; setenv boot_targets usb0 pxe; run distro_bootcmd"
               CONFIG_BOOTDELAY=1
 
               # Pilote GMAC vendor porté (EMAC1 + PHY AC300 en RMII).
