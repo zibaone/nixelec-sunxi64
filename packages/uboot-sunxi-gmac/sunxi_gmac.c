@@ -28,6 +28,7 @@
  *     `sunxi_gmac_ephy_clk_note`).
  */
 
+#include <asm/arch/cpu.h>
 #include <asm/cache.h>
 #include <asm/io.h>
 #include <clk.h>
@@ -43,6 +44,7 @@
 #include <malloc.h>
 #include <net.h>
 #include <reset.h>
+#include <u-boot/sha256.h>
 
 /* ── registres du MAC (vendor `sunxi-gmac.c:99-123`) ───────────────────── */
 #define GMAC_BASIC_CTL0		0x00
@@ -328,10 +330,20 @@ static int sunxi_gmac_start(struct udevice *dev)
 	val |= CCU_EPHY_25M_GATE;
 	writel(val, (void __iomem *)(CCU_BASE + CCU_EPHY_25M));
 
-	/* reset logiciel du MAC */
+	/*
+	 * Reset logiciel du MAC, BORNÉ. Une horloge MAC absente laisse le bit
+	 * posé indéfiniment : sans borne, U-Boot se fige ici sans rien dire
+	 * (mesuré sur la H96 : plus aucune sortie console après `Net:`).
+	 */
 	writel(SOFT_RST, priv->base + GMAC_BASIC_CTL1);
-	while (readl(priv->base + GMAC_BASIC_CTL1) & SOFT_RST)
-		;
+	for (i = 0; i < 200; i++) {
+		if (!(readl(priv->base + GMAC_BASIC_CTL1) & SOFT_RST))
+			break;
+		mdelay(1);
+	}
+	if (i == 200)
+		dev_err(dev, "reset MAC bloqué (CTL1=%08x) — horloge MAC ?\n",
+			readl(priv->base + GMAC_BASIC_CTL1));
 
 	/* syscfg mesuré : la valeur du BSP coupe l'EPHY */
 	if (priv->syscfg)
@@ -523,6 +535,7 @@ static const struct eth_ops sunxi_gmac_ops = {
 static int sunxi_gmac_probe(struct udevice *dev)
 {
 	struct sunxi_gmac_priv *priv = dev_get_priv(dev);
+	struct eth_pdata *pdata = dev_get_plat(dev);
 	struct clk clk;
 	struct reset_ctl rst;
 	fdt_addr_t addr;
@@ -546,12 +559,48 @@ static int sunxi_gmac_probe(struct udevice *dev)
 	priv->no_crc_check = dev_read_bool(dev, "allwinner,no-crc-check");
 	priv->phy_addr = dev_read_u32_default(dev, "phy-addr", 0);
 
+	/*
+	 * MAC déterministe dérivée de la SID.
+	 *
+	 * Ces boîtes H616/H618 n'ont aucune MAC en usine (mesure du 2026-11-15 :
+	 * les 256 octets lisibles de la SID ne contiennent ni OUI ni adresse) et
+	 * U-Boot rejette un périphérique dont l'adresse n'est pas valide
+	 * (« No valid MAC address found »). Le noyau applique
+	 * `nixelec.macFromSid` : `02:` suivi des 5 premiers octets de
+	 * sha256(SID[0..15]). On reproduit le MÊME calcul ici, sinon le bail
+	 * DHCP d'U-Boot et celui du noyau ne désignent pas la même unité — et
+	 * `havenos load --netboot` ne retrouve plus la carte.
+	 */
+	if (!is_valid_ethaddr(pdata->enetaddr)) {
+		unsigned int sid[4];
+		unsigned char sid_bytes[16];
+		unsigned char digest[SHA256_SUM_LEN];
+		sha256_context ctx;
+		int i;
+
+		if (sunxi_get_sid(sid) == 0) {
+			for (i = 0; i < 4; i++)
+				memcpy(&sid_bytes[i * 4], &sid[i], 4);
+			/* API explicite : `sha256_csum_wd` boucle a l infini quand
+			 * chunk_sz vaut 0 dans sa branche watchdog (mesure : U-Boot
+			 * se fige sur la ligne `Net:`). */
+			sha256_starts(&ctx);
+			sha256_update(&ctx, sid_bytes, sizeof(sid_bytes));
+			sha256_finish(&ctx, digest);
+			pdata->enetaddr[0] = 0x02;
+			memcpy(&pdata->enetaddr[1], digest, 5);
+			dev_info(dev, "MAC dérivée de la SID : %pM\n",
+				 pdata->enetaddr);
+		}
+	}
+
 	ret = clk_get_by_name(dev, "gmac", &clk);
 	if (ret) {
 		dev_err(dev, "horloge « gmac » absente : %d\n", ret);
 		return ret;
 	}
 	clk_enable(&clk);
+	dev_info(dev, "horloge gmac : %lu Hz\n", (unsigned long)clk_get_rate(&clk));
 
 	ret = reset_get_by_name(dev, "gmac", &rst);
 	if (!ret)

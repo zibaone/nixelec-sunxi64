@@ -52,16 +52,9 @@
               # Pilote GMAC vendor porté (EMAC1 + PHY AC300 en RMII).
               CONFIG_SUNXI_GMAC=y
               CONFIG_PHYLIB=y
-
-              # Ces cartes n'ont AUCUNE MAC en usine (mesure du 2026-11-15 :
-              # les 256 octets lisibles de la SID ne contiennent ni OUI ni
-              # adresse). Sans MAC, eth_post_probe rejette le peripherique
-              # (« No valid MAC address found ») et `dhcp` ne trouve rien.
-              # Le noyau derive la sienne de la SID (nixelec.macFromSid) ;
-              # U-Boot n'a pas cet algorithme, on lui fait donc tirer une
-              # adresse aleatoire locale. A aligner sur la SID quand le
-              # netboot deviendra le chemin nominal.
-              CONFIG_NET_RANDOM_ETHADDR=y
+              # Le pilote dérive la MAC de la SID par SHA-256 (même calcul
+              # que nixelec.macFromSid côté noyau).
+              CONFIG_SHA256=y
 
               # ──────────────────────────────────────────────────────────────
               #  Ethernet par dongle USB — filet de sécurité
