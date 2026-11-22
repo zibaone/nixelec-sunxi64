@@ -1,0 +1,27 @@
+--- a/drivers/usb/musb-new/sunxi.c
++++ b/drivers/usb/musb-new/sunxi.c
+@@ -244,12 +244,19 @@
+ 			printf("No host cable detected: ");
+ 			return -ENODEV;
+ 		}
++	}
+ 
+-		ret = generic_phy_power_on(&glue->phy);
+-		if (ret) {
+-			pr_debug("failed to power on USB PHY\n");
+-			return ret;
+-		}
++	/*
++	 * La PHY doit etre alimentee dans les deux roles. Le code d'origine ne
++	 * le faisait qu'en mode hote : en peripherique, aucun pull-up D+
++	 * n'etait arme, l'hote ne voyait jamais le peripherique et `ums`
++	 * tournait indefiniment sur son spinner sans enumerer (mesure sur
++	 * H96 Max H618 avec le cable A-A).
++	 */
++	ret = generic_phy_power_on(&glue->phy);
++	if (ret) {
++		pr_debug("failed to power on USB PHY\n");
++		return ret;
+ 	}
+ 
+ 	USBC_ForceVbusValidToHigh(musb->mregs);

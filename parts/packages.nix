@@ -52,6 +52,9 @@
               # `board_usb_init()` sunxi : sans lui, `ums` répond
               # « Controller uninitialized » (le faible de common/usb.c rend 0).
               ./../packages/uboot-usb-ums/0001-sunxi-board-usb-init.patch
+              # En périphérique, la PHY MUSB n'était jamais alimentée : aucun
+              # pull-up D+, donc aucun gadget visible côté hôte.
+              ./../packages/uboot-usb-ums/0002-musb-sunxi-power-on-phy.patch
             ];
             postPatch = (base.drvAttrs.postPatch or "") + ''
               cp ${./../packages/uboot-sunxi-gmac/sunxi_gmac.c} drivers/net/sunxi_gmac.c
