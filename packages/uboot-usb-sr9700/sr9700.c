@@ -376,11 +376,20 @@ static int sr9700_eth_probe(struct udevice *dev)
 	printf("sr9700: probe %04x:%04x, %d interface(s)\n",
 	       udev->descriptor.idVendor, udev->descriptor.idProduct,
 	       udev->config.no_of_if);
-	for (i = 0; i < udev->config.no_of_if; i++)
-		printf("sr9700:   itf %d class %02x/%02x, %d ep\n", i,
-		       udev->config.if_desc[i].desc.bInterfaceClass,
-		       udev->config.if_desc[i].desc.bInterfaceSubClass,
-		       udev->config.if_desc[i].desc.bNumEndpoints);
+	for (i = 0; i < udev->config.no_of_if; i++) {
+		struct usb_interface *itf = &udev->config.if_desc[i];
+		int j;
+
+		printf("sr9700:   itf %d class %02x/%02x, %d ep",
+		       i, itf->desc.bInterfaceClass, itf->desc.bInterfaceSubClass,
+		       itf->desc.bNumEndpoints);
+		for (j = 0; j < itf->desc.bNumEndpoints; j++)
+			printf(" [%02x attr%02x max%03x]",
+			       itf->ep_desc[j].bEndpointAddress,
+			       itf->ep_desc[j].bmAttributes,
+			       itf->ep_desc[j].wMaxPacketSize);
+		printf("\n");
+	}
 
 	/*
 	 * 0fe6:9702 = CD-ROM virtuel en interface 0, Ethernet en interface 1.
@@ -399,6 +408,10 @@ static int sr9700_eth_probe(struct udevice *dev)
 		if (ret)
 			printf("sr9700: enregistrement impossible (%d)\n", ret);
 	}
+
+	if (!ret)
+		printf("sr9700: ep_in=%d ep_out=%d ep_int=%d (attendu 81/02/83)\n",
+		       priv->ueth.ep_in, priv->ueth.ep_out, priv->ueth.ep_int);
 
 	return ret;
 }
