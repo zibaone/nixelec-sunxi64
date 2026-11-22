@@ -110,6 +110,10 @@
               CONFIG_USB_GADGET=y
               CONFIG_USB_MUSB_GADGET=y
               CONFIG_USB_MUSB_SUNXI=y
+              # `ums` exige `USB_GADGET_DOWNLOAD` (le cadre g_dnl), pas
+              # seulement `USB_GADGET` : sans lui la commande disparait
+              # silencieusement du binaire — mesure : « Unknown command ums ».
+              CONFIG_USB_GADGET_DOWNLOAD=y
               CONFIG_CMD_USB_MASS_STORAGE=y
               CONFIG_USB_FUNCTION_MASS_STORAGE=y
 
