@@ -1,0 +1,11 @@
+--- a/cmd/usb.c
++++ b/cmd/usb.c
+@@ -397,6 +397,8 @@
+ 					dev->config.if_desc[0].desc.bInterfaceClass),
+ 					portspeed(dev->speed),
+ 					dev->config.desc.bMaxPower * 2);
++	printf(" %s  [%04x:%04x]\n", pre, dev->descriptor.idVendor,
++	       dev->descriptor.idProduct);
+ 	if (strlen(dev->mf) || strlen(dev->prod) || strlen(dev->serial))
+ 		printf(" %s  %s %s %s\n", pre, dev->mf, dev->prod, dev->serial);
+ 	printf(" %s\n", pre);

@@ -45,6 +45,9 @@
             patches = (base.drvAttrs.patches or [ ]) ++ [
               ./../packages/uboot-sunxi-gmac/0001-net-sunxi-gmac.patch
               ./../packages/uboot-usb-sr9700/0001-usb-eth-sr9700.patch
+              # `usb info` n'affiche pas le VID/PID : on l'ajoute, c'est le
+              # seul moyen de reconnaitre une puce sans son pilote.
+              ./../packages/uboot-usb-sr9700/0002-usb-info-vid-pid.patch
             ];
             postPatch = (base.drvAttrs.postPatch or "") + ''
               cp ${./../packages/uboot-sunxi-gmac/sunxi_gmac.c} drivers/net/sunxi_gmac.c
