@@ -805,7 +805,7 @@ static const struct eth_ops sunxi_gmac_ops = {
  * l'Ethernet interne est mort — le dongle USB-Ethernet devient le seul
  * candidat réseau.
  */
-static int sunxi_gmac_hw_init(struct udevice *dev);
+static int sunxi_gmac_hw_init(struct udevice *dev, struct sunxi_gmac_priv *priv);
 
 /*
  * Bind : tant qu'une PHY ne répond pas sur le MDIO, ce périphérique ne doit
@@ -813,32 +813,38 @@ static int sunxi_gmac_hw_init(struct udevice *dev);
  * premier échoue au probe : il retient le premier de la classe et s'arrête.
  * Un bind qui rend -ENODEV est explicitement prévu (« Driver refuses to
  * bind »), et c'est le seul moyen de laisser la place au dongle USB-Ethernet.
+ *
+ * Attention : le priv du pilote n'est alloué qu'au probe
+ * (`device_alloc_priv()` est appelé par `device_probe()`), pas au bind. On
+ * travaille donc sur une copie locale — écrire dans `dev_get_priv()` ici
+ * plante la carte au scan du modèle de périphériques.
  */
 static int sunxi_gmac_bind(struct udevice *dev)
 {
-	struct sunxi_gmac_priv *priv = dev_get_priv(dev);
+	struct sunxi_gmac_priv tmp;
 	fdt_addr_t addr;
 	u32 val;
 
-	priv->base = dev_read_addr_ptr(dev);
-	if (!priv->base)
+	memset(&tmp, 0, sizeof(tmp));
+
+	tmp.base = dev_read_addr_ptr(dev);
+	if (!tmp.base)
 		return -EINVAL;
 
 	addr = dev_read_addr_index(dev, 1);
 	if (addr != FDT_ADDR_T_NONE)
-		priv->syscfg = map_physmem(addr, 4, MAP_NOCACHE);
+		tmp.syscfg = map_physmem(addr, 4, MAP_NOCACHE);
 
 	if (dev_read_u32(dev, "allwinner,syscfg-value", &val) == 0)
-		priv->syscfg_val = val;
+		tmp.syscfg_val = val;
 	else
-		priv->syscfg = NULL;
+		tmp.syscfg = NULL;
 
-	return sunxi_gmac_hw_init(dev);
+	return sunxi_gmac_hw_init(dev, &tmp);
 }
 
-static int sunxi_gmac_hw_init(struct udevice *dev)
+static int sunxi_gmac_hw_init(struct udevice *dev, struct sunxi_gmac_priv *priv)
 {
-	struct sunxi_gmac_priv *priv = dev_get_priv(dev);
 	u32 val;
 	int i, id;
 
@@ -991,7 +997,8 @@ static int sunxi_gmac_probe(struct udevice *dev)
 	dev_info(dev, "H616 GMAC prêt (syscfg %#x%s, DMA @ %#x)\n", priv->syscfg_val,
 		 priv->no_crc_check ? ", sans contrôle CRC" : "", GMAC_DMA_BASE);
 
-	return 0;
+	/* horloges, reset et PHY, avec le vrai priv cette fois */
+	return sunxi_gmac_hw_init(dev, priv);
 }
 
 static const struct udevice_id sunxi_gmac_ids[] = {
