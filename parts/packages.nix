@@ -55,6 +55,8 @@
               # En périphérique, la PHY MUSB n'était jamais alimentée : aucun
               # pull-up D+, donc aucun gadget visible côté hôte.
               ./../packages/uboot-usb-ums/0002-musb-sunxi-power-on-phy.patch
+              # Trace : `sunxi_musb_enable` est-il seulement appelé en gadget ?
+              ./../packages/uboot-usb-ums/0003-musb-sunxi-trace-enable.patch
             ];
             postPatch = (base.drvAttrs.postPatch or "") + ''
               cp ${./../packages/uboot-sunxi-gmac/sunxi_gmac.c} drivers/net/sunxi_gmac.c

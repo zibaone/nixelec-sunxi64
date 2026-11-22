@@ -1,0 +1,11 @@
+--- a/drivers/usb/musb-new/sunxi.c
++++ b/drivers/usb/musb-new/sunxi.c
+@@ -258,6 +258,8 @@
+ 		pr_debug("failed to power on USB PHY\n");
+ 		return ret;
+ 	}
++	printf("sunxi-musb: enable, mode=%s, power_on=%d\n",
++	       is_host_enabled(musb) ? "host" : "periph", ret);
+ 
+ 	USBC_ForceVbusValidToHigh(musb->mregs);
+ 
