@@ -27,6 +27,12 @@
  obj-$(CONFIG_VSC7385_ENET) += vsc7385.o
 --- a/dts/upstream/src/arm64/allwinner/sun50i-h618-transpeed-8k618-t.dts
 +++ b/dts/upstream/src/arm64/allwinner/sun50i-h618-transpeed-8k618-t.dts
+@@ -188,4 +188,4 @@
+ &usbotg {
+-	dr_mode = "host";	/* USB A type receptable */
++	dr_mode = "peripheral";	/* cable A-A : FEL, puis ums */
+ 	status = "okay";
+ };
 @@ -198,3 +198,38 @@
  &usbphy {
  	status = "okay";

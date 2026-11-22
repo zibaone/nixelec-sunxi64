@@ -96,6 +96,23 @@
               # Les dongles 10/100M pleine vitesse (SR9700 et clones), portés
               # depuis le noyau : aucun pilote amont ne les couvre.
               CONFIG_USB_ETHER_SR9700=y
+              # ──────────────────────────────────────────────────────────────
+              #  Gadget USB : `ums` expose l'eMMC en stockage de masse
+              #
+              #  Chemin d'installation le plus court sur ce banc : le cable
+              #  A-A sert d'abord au FEL, puis au gadget. L'eMMC apparait
+              #  alors comme un disque sur le poste et s'écrit en `dd` a
+              #  ~20 Mo/s — une quinzaine de secondes pour l'image, sans
+              #  TFTP, sans dongle et sans PHY. Le port OTG est passe en
+              #  peripherique dans le DT (`dr_mode`), comme le fait deja le
+              #  BROM pour le FEL.
+              # ──────────────────────────────────────────────────────────────
+              CONFIG_USB_GADGET=y
+              CONFIG_USB_MUSB_GADGET=y
+              CONFIG_USB_MUSB_SUNXI=y
+              CONFIG_CMD_USB_MASS_STORAGE=y
+              CONFIG_USB_FUNCTION_MASS_STORAGE=y
+
               # Non couverts par U-Boot mainline, à ce jour : SR9700,
               # DM9601, CH9200 — puces 10/100M pleine vitesse des dongles
               # bon marché. Mesuré le 2026-11-22 : un tel dongle s'énumère
