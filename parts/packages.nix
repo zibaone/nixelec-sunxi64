@@ -49,6 +49,9 @@
               # seul moyen de reconnaitre une puce sans son pilote.
               ./../packages/uboot-usb-sr9700/0002-usb-info-vid-pid.patch
               ./../packages/uboot-usb-sr9700/0003-diag-usb-match.patch
+              # `board_usb_init()` sunxi : sans lui, `ums` répond
+              # « Controller uninitialized » (le faible de common/usb.c rend 0).
+              ./../packages/uboot-usb-ums/0001-sunxi-board-usb-init.patch
             ];
             postPatch = (base.drvAttrs.postPatch or "") + ''
               cp ${./../packages/uboot-sunxi-gmac/sunxi_gmac.c} drivers/net/sunxi_gmac.c
