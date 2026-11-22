@@ -57,6 +57,8 @@
               ./../packages/uboot-usb-ums/0002-musb-sunxi-power-on-phy.patch
               # Trace : `sunxi_musb_enable` est-il seulement appelé en gadget ?
               ./../packages/uboot-usb-ums/0003-musb-sunxi-trace-enable.patch
+              # power_on remet ISCR à zéro : réarmer le pull-up D+ ensuite.
+              ./../packages/uboot-usb-ums/0004-musb-sunxi-reassert-pullup.patch
             ];
             postPatch = (base.drvAttrs.postPatch or "") + ''
               cp ${./../packages/uboot-sunxi-gmac/sunxi_gmac.c} drivers/net/sunxi_gmac.c

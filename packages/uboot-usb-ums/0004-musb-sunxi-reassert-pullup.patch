@@ -1,0 +1,20 @@
+--- a/drivers/usb/musb-new/sunxi.c
++++ b/drivers/usb/musb-new/sunxi.c
+@@ -261,6 +261,17 @@
+ 	printf("sunxi-musb: enable, mode=%s, power_on=%d\n",
+ 	       is_host_enabled(musb) ? "host" : "periph", ret);
+ 
++	/*
++	 * generic_phy_power_on() remet ISCR a zero : le pull-up D+ arme par
++	 * sunxi_musb_init() est perdu, et l'hote ne voit jamais le
++	 * peripherique (mesure : power_on=0, aucune enumeration). On rearme
++	 * pull-up et role APRES la mise sous tension de la PHY.
++	 */
++	USBC_EnableDpDmPullUp(musb->mregs);
++	USBC_EnableIdPullUp(musb->mregs);
++	if (!is_host_enabled(musb))
++		USBC_ForceIdToHigh(musb->mregs);
++
+ 	USBC_ForceVbusValidToHigh(musb->mregs);
+ 
+ 	enabled = true;
