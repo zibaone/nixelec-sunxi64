@@ -84,6 +84,15 @@
               CONFIG_USB_ETHER_ASIX88179=y
               CONFIG_USB_ETHER_SMSC95XX=y
               CONFIG_USB_ETHER_RTL8152=y
+              CONFIG_USB_ETHER_MCS7830=y
+              CONFIG_USB_ETHER_LAN75XX=y
+              CONFIG_USB_ETHER_LAN78XX=y
+              # Non couverts par U-Boot mainline, à ce jour : SR9700,
+              # DM9601, CH9200 — puces 10/100M pleine vitesse des dongles
+              # bon marché. Mesuré le 2026-11-22 : un tel dongle s'énumère
+              # en 12 Mb/s sous OHCI, aucun pilote ne s'y lie, et `dhcp`
+              # répond « No ethernet found ». Utiliser un RTL8152/8153,
+              # AX88772/88179 ou LAN95xx pour le chemin de secours.
             '';
           }
         );
