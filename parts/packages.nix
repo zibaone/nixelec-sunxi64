@@ -22,7 +22,10 @@
       # Elle vit ici, et pas dans HavenOS, pour que la CI aarch64 de ce dépôt
       # la construise et la pousse au cache : un utilisateur public ne doit pas
       # compiler U-Boot pour installer une carte.
-      packages.uboot-h96-max-h618-netboot =
+      # Une seule image netboot pour TOUTE la famille sunxi64 : elle balaie le
+      # MDIO, n'applique les quirks AC300 que si la PHY en est une, et rend
+      # -ENODEV sinon pour laisser U-Boot passer au dongle USB-Ethernet.
+      packages.uboot-sunxi64-netboot =
         let
           pkgsAarch64 = inputs.nixpkgs.legacyPackages.aarch64-linux;
           base = inputs.nixbian.packages.aarch64-linux.uboot-transpeed-8k618-t-edge;

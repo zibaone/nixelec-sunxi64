@@ -242,6 +242,50 @@ static int gmac_mdio_read(struct sunxi_gmac_priv *priv, int reg)
 	return readl(priv->base + GMAC_MDIO_DATA) & 0xffff;
 }
 
+static int gmac_mdio_read_phy(struct sunxi_gmac_priv *priv, int addr, int reg)
+{
+	u32 val;
+
+	if (gmac_mdio_wait(priv))
+		return -EBUSY;
+
+	val = (MDIO_MDC_DIV << MDIO_MDC_DIV_OFF);
+	val |= (addr << MDIO_PHY_ADDR_OFF) & MDIO_PHY_ADDR_MASK;
+	val |= (reg << MDIO_PHY_REG_OFF) & MDIO_PHY_REG_MASK;
+	val |= MDIO_BUSY;
+	writel(val, priv->base + GMAC_MDIO_ADDR);
+
+	if (gmac_mdio_wait(priv))
+		return -EBUSY;
+
+	return readl(priv->base + GMAC_MDIO_DATA) & 0xffff;
+}
+
+/*
+ * Découverte de la PHY : balayage des 32 adresses MDIO.
+ *
+ * Une seule image doit servir toute la famille (Transpeed, H96, Zero3…) :
+ * l'adresse et le modèle de PHY changent d'une carte à l'autre, donc on ne
+ * les impose plus par le DT. Rend (ID1 << 16) | ID2 et retient l'adresse,
+ * ou -1 si le bus est muet.
+ */
+static int sunxi_gmac_phy_detect(struct sunxi_gmac_priv *priv)
+{
+	int addr, id1, id2;
+
+	for (addr = 0; addr < 32; addr++) {
+		id1 = gmac_mdio_read_phy(priv, addr, 0x02);
+		id2 = gmac_mdio_read_phy(priv, addr, 0x03);
+		if (id1 < 0 || id2 < 0)
+			continue;
+		if (id1 == 0xffff || id1 == 0x0000)
+			continue;
+		priv->phy_addr = addr;
+		return (id1 << 16) | (id2 & 0xffff);
+	}
+	return -1;
+}
+
 static int gmac_mdio_write(struct sunxi_gmac_priv *priv, int reg, u16 data)
 {
 	u32 val;
@@ -533,6 +577,10 @@ static int sunxi_gmac_start(struct udevice *dev)
 	u32 val;
 	int i, id;
 
+	/* Une seule initialisation, même si U-Boot relance `dhcp`. */
+	if (priv->started)
+		return 0;
+
 	/*
 	 * PLL_PERI0 est éteinte au démarrage — mesuré sur la carte :
 	 * 0x08003100, bit 31 = 0, alors que PLL_PERI1 et PLL_VIDEO, elles,
@@ -652,15 +700,26 @@ static int sunxi_gmac_start(struct udevice *dev)
 	if (priv->syscfg)
 		writel(priv->syscfg_val, priv->syscfg);
 
-	/* PHY */
-	id = gmac_mdio_read(priv, 0x02);
-	id = (id << 16) | (gmac_mdio_read(priv, 0x03) & 0xffff);
-	dev_err(dev, "PHY id %08x (attendu %08x), BMCR=%04x BMSR=%04x\n",
-		id, AC300_PHY_ID, gmac_mdio_read(priv, 0x00), gmac_mdio_read(priv, 0x01));
+	/*
+	 * Détection de la PHY. Si le bus est muet, on rend -ENODEV : U-Boot
+	 * passe alors au périphérique suivant (le dongle USB-Ethernet), ce qui
+	 * est exactement le comportement voulu pour une image de famille.
+	 */
+	id = sunxi_gmac_phy_detect(priv);
+	if (id < 0) {
+		dev_err(dev, "aucune PHY sur MDIO, 32 adresses balayées : inutilisable ici\n");
+		return -ENODEV;
+	}
+	dev_err(dev, "PHY %08x à l'adresse %d, BMCR=%04x BMSR=%04x\n",
+		id, priv->phy_addr, gmac_mdio_read(priv, 0x00),
+		gmac_mdio_read(priv, 0x01));
 
-	gmac_ac300_enable(priv);
-	gmac_ephy_cali(priv);
-	gmac_ac300_init(priv);
+	/* Les quirks AC300 ne s'appliquent qu'à une AC300 : le reste est générique. */
+	if ((id & 0xffff0000) == (AC300_PHY_ID & 0xffff0000)) {
+		gmac_ac300_enable(priv);
+		gmac_ephy_cali(priv);
+		gmac_ac300_init(priv);
+	}
 
 	/* autoneg 100M full duplex, puis attente du lien */
 	gmac_mdio_write(priv, 0x00, 0x1140 | BIT(9));
