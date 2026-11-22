@@ -27,7 +27,7 @@
  obj-$(CONFIG_VSC7385_ENET) += vsc7385.o
 --- a/dts/upstream/src/arm64/allwinner/sun50i-h618-transpeed-8k618-t.dts
 +++ b/dts/upstream/src/arm64/allwinner/sun50i-h618-transpeed-8k618-t.dts
-@@ -198,3 +198,28 @@
+@@ -198,3 +198,38 @@
  &usbphy {
  	status = "okay";
  };
@@ -56,3 +56,13 @@
 +		status = "okay";
 +	};
 +};
++
++/*
++ * USB : les quatre paires EHCI/OHCI. Le DT Transpeed n'en active que deux ;
++ * la H96 expose son dongle sur un autre port, et une image de famille doit
++ * toutes les ouvrir (aucune ne gene une carte qui ne les câble pas).
++ */
++&ehci2 { status = "okay"; };
++&ohci2 { status = "okay"; };
++&ehci3 { status = "okay"; };
++&ohci3 { status = "okay"; };
