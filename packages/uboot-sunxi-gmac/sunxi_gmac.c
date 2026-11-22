@@ -563,20 +563,11 @@ static int sunxi_gmac_start(struct udevice *dev)
 	 * plausibles et on retient celle qui rend le bloc MAC inscriptible —
 	 * c'est le seul juge, la PHY ne répondant pas encore.
 	 */
-	{
-		static const u32 divs[] = { 0x0, 0x17, 0x18, 0x0b, 0x0f };
-
-		for (i = 0; i < ARRAY_SIZE(divs); i++) {
-			writel(CCU_EPHY_25M_GATE | divs[i],
-			       (void __iomem *)(CCU_BASE + CCU_EPHY_25M));
-			udelay(200);
-			writel(0xa1b2c3d4, priv->base + 0x10);
-			pr_err("EPHY 970=%08x : ADDR0 relu %08x, MDIO DATA=%08x\n",
-			       readl((void __iomem *)(CCU_BASE + CCU_EPHY_25M)),
-			       readl(priv->base + 0x10),
-			       gmac_mdio_read(priv, 0x02));
-		}
-	}
+	/*
+	 * Le champ M (bits 0-3) de 0x970 est en lecture seule : cinq valeurs
+	 * écrites, cinq fois 0xc0000000 relu. La division par 24 est câblée,
+	 * rien à régler ici.
+	 */
 
 	/* CCU : porte EPHY 25M (PLL_PERI0 / 24 = 25 MHz) */
 	val = readl((void __iomem *)(CCU_BASE + CCU_EPHY_25M));
@@ -623,10 +614,16 @@ static int sunxi_gmac_start(struct udevice *dev)
 	       readl((void __iomem *)(CCU_BASE + 0x0020)),
 	       readl((void __iomem *)(CCU_BASE + 0x0028)),
 	       readl((void __iomem *)(CCU_BASE + 0x0030)));
-	writel(0xa1b2c3d4, priv->base + 0x10);
-	writel(0x0000ffff, priv->base + 0x14);
-	pr_err("MAC ADDR0=%08x/%08x (écrit a1b2c3d4/0000ffff) syscfg 34=%08x\n",
-	       readl(priv->base + 0x10), readl(priv->base + 0x14),
+	/*
+	 * Les registres d'adresse MAC sont à 0x50 (haut) et 0x54 (bas) — soit
+	 * `ADDR_HI(0)`/`ADDR_LO(0)` du vendor, pas 0x10/0x14 comme je l'avais
+	 * supposé : ce premier test concluait à tort que le bloc ignorait les
+	 * écritures.
+	 */
+	writel(0x0000beef, priv->base + 0x50);
+	writel(0xa1b2c3d4, priv->base + 0x54);
+	pr_err("MAC ADDR_HI/LO=%08x/%08x (écrit 0000beef/a1b2c3d4) syscfg 34=%08x\n",
+	       readl(priv->base + 0x50), readl(priv->base + 0x54),
 	       readl((void __iomem *)0x03000034));
 
 	/*
@@ -672,12 +669,12 @@ static int sunxi_gmac_start(struct udevice *dev)
 		if (gmac_mdio_read(priv, 0x01) & BIT(2))
 			break;
 	}
-	if (i == 50)
-		dev_err(dev, "lien PHY non établi après 500 ms (BMSR=%04x)\n",
-			gmac_mdio_read(priv, 0x01));
+	val = gmac_mdio_read(priv, 0x01);
+	if (i == 50 || val == 0xffff)
+		dev_err(dev, "lien PHY non établi (BMSR=%04x%s)\n", val,
+			val == 0xffff ? ", bus muet : aucune PHY ne répond" : "");
 	else
-		dev_err(dev, "lien PHY établi (BMSR=%04x)\n",
-			gmac_mdio_read(priv, 0x01));
+		dev_err(dev, "lien PHY établi (BMSR=%04x)\n", val);
 
 	/* anneaux */
 	priv->tx_head = 0;
