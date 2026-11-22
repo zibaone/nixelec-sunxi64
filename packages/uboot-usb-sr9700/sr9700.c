@@ -34,6 +34,8 @@
 #define   NCR_RST		BIT(0)
 #define SR_NSR			0x01
 #define   NSR_LINKST		BIT(6)
+#define SR_TCR			0x02
+#define SR_TSR1			0x03
 #define SR_RCR			0x05
 #define   RCR_RXEN		BIT(0)
 #define   RCR_ALL		BIT(3)
@@ -59,6 +61,7 @@
 
 struct sr9700_priv {
 	struct ueth_data ueth;
+	int tx_dbg;
 };
 
 static int sr9700_read(struct usb_device *udev, u8 reg, u16 len, void *data)
@@ -193,6 +196,19 @@ static int sr9700_eth_send(struct udevice *dev, void *packet, int length)
 	ret = usb_bulk_msg(udev, usb_sndbulkpipe(udev, priv->ueth.ep_out),
 			   msg, length + SR_TX_OVERHEAD, &actual,
 			   USB_BULK_SEND_TIMEOUT);
+
+	/* Trace des premiers envois : la puce a-t-elle transmis ? */
+	if (priv->tx_dbg < 4) {
+		u8 nsr = 0, tsr1 = 0, tcr = 0;
+
+		sr9700_read_reg(udev, SR_NSR, &nsr);
+		sr9700_read_reg(udev, SR_TSR1, &tsr1);
+		sr9700_read_reg(udev, SR_TCR, &tcr);
+		printf("sr9700: tx len=%d ret=%d actual=%d NSR=%02x TSR1=%02x TCR=%02x\n",
+		       length, ret, actual, nsr, tsr1, tcr);
+		priv->tx_dbg++;
+	}
+
 	if (ret)
 		return ret;
 
