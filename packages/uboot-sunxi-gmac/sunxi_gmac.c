@@ -506,7 +506,7 @@ static void sunxi_gmac_ephy_clock(void)
 #define PIO_PDAT		0x0010
 #define PIO_FUNC_GPIO		0x1
 
-static void bb_pin_mode(u32 func)
+static __maybe_unused void bb_pin_mode(u32 func)
 {
 	u32 v = readl((void __iomem *)(SUNXI_PIO_BASE + PIO_PA_CFG1));
 
@@ -540,7 +540,7 @@ static void bb_clock(void)
 }
 
 /* Lecture clause 22 : préambule, ST=01, OP=10, adresse, registre, TA, 16 bits. */
-static u16 bb_read(int phy, int reg)
+static __maybe_unused u16 bb_read(int phy, int reg)
 {
 	u32 d = 0;
 	int i;
@@ -575,153 +575,13 @@ static int sunxi_gmac_start(struct udevice *dev)
 	struct sunxi_gmac_priv *priv = dev_get_priv(dev);
 	struct eth_pdata *pdata = dev_get_plat(dev);
 	u32 val;
-	int i, id;
+	int i;
 
 	/* Une seule initialisation, même si U-Boot relance `dhcp`. */
 	if (priv->started)
 		return 0;
 
-	/*
-	 * PLL_PERI0 est éteinte au démarrage — mesuré sur la carte :
-	 * 0x08003100, bit 31 = 0, alors que PLL_PERI1 et PLL_VIDEO, elles,
-	 * sont verrouillées. Son enfant ahb3 horloge bus-emac1, donc le bloc
-	 * MAC : sans elle, les registres rendent des valeurs figées et les
-	 * écritures sont ignorées (mesuré : ADDR0 écrit a1b2c3d4 relu
-	 * 80000000). On l'allume avant tout accès au MAC.
-	 */
-	val = readl((void __iomem *)(CCU_BASE + CCU_PLL_PERI0));
-	if (!(val & BIT(31))) {
-		writel(val | BIT(31) | BIT(29),
-		       (void __iomem *)(CCU_BASE + CCU_PLL_PERI0));
-		mdelay(2);
-	}
-	dev_err(dev, "PLL_PERI0=%08x (verrou=%d)\n",
-		readl((void __iomem *)(CCU_BASE + CCU_PLL_PERI0)),
-		!!(readl((void __iomem *)(CCU_BASE + CCU_PLL_PERI0)) & BIT(28)));
-
-	sunxi_gmac_mux_rmii();
-	sunxi_gmac_ephy_clock();
-
-	/*
-	 * Porte et diviseur de l'horloge EPHY 25M.
-	 *
-	 * Le mainline ne modélise que les deux portes (bits 31:30) ; le champ
-	 * M (bits 0-3) reste à zéro, soit une division par 1 : la PHY recevrait
-	 * alors la source entière au lieu de 25 MHz. On balaie les valeurs
-	 * plausibles et on retient celle qui rend le bloc MAC inscriptible —
-	 * c'est le seul juge, la PHY ne répondant pas encore.
-	 */
-	/*
-	 * Le champ M (bits 0-3) de 0x970 est en lecture seule : cinq valeurs
-	 * écrites, cinq fois 0xc0000000 relu. La division par 24 est câblée,
-	 * rien à régler ici.
-	 */
-
-	/* CCU : porte EPHY 25M (PLL_PERI0 / 24 = 25 MHz) */
-	val = readl((void __iomem *)(CCU_BASE + CCU_EPHY_25M));
-	val |= CCU_EPHY_25M_GATE;
-	writel(val, (void __iomem *)(CCU_BASE + CCU_EPHY_25M));
-
-	dev_err(dev, "CCU 970=%08x 97c=%08x 7ac=%08x | PIO PA_CFG0=%08x PA_CFG1=%08x\n",
-		readl((void __iomem *)(CCU_BASE + CCU_EPHY_25M)),
-		readl((void __iomem *)(CCU_BASE + 0x97c)),
-		readl((void __iomem *)(CCU_BASE + CCU_PWM_BUS)),
-		readl((void __iomem *)(SUNXI_PIO_BASE + PIO_PA_CFG0)),
-		readl((void __iomem *)(SUNXI_PIO_BASE + PIO_PA_CFG1)));
-	dev_err(dev, "PWM5 PCCR45=%08x PCR=%08x PPR=%08x PER=%08x\n",
-		readl((void __iomem *)(PWM_BASE + PWM_PCCR45)),
-		readl((void __iomem *)(PWM_BASE + PWM_PCR(PWM_EPHY_CHANNEL))),
-		readl((void __iomem *)(PWM_BASE + PWM_PPR(PWM_EPHY_CHANNEL))),
-		readl((void __iomem *)(PWM_BASE + PWM_PER)));
-
-	/* sonde bit-bang : la PHY répond-elle seulement avec son horloge ? */
-	bb_pin_mode(PIO_FUNC_GPIO);
-	bb_set(9, 1);
-	udelay(50);
-	pr_err("bit-bang : repos=%d\n", bb_get(9));
-	/* balayage : toute adresse qui répond n'est ni 0xffff ni 0 */
-	for (i = 0; i < 32; i++) {
-		u16 id1 = bb_read(i, 2);
-		u16 id2 = bb_read(i, 3);
-
-		if ((id1 != 0xffff || id2 != 0xffff) && id1 != 0x0000)
-			pr_err("bit-bang : PHY à l'adresse %d, id %04x%04x, BMCR=%04x\n",
-			       i, id1, id2, bb_read(i, 0));
-	}
-	pr_err("bit-bang : balayage 0-31 terminé\n");
-	sunxi_gmac_mux_rmii();
-
-	/*
-	 * Le bloc MAC répond-il vraiment ? Un registre de données neutre
-	 * (ADDR0 bas/haut) doit rendre exactement ce qu'on y écrit ; sinon le
-	 * bloc n'est pas accessible et tout le reste du diagnostic est du bruit.
-	 */
-	pr_err("CCU PLL CPUX=%08x VIDEO=%08x PERI1=%08x PERI0=%08x DE=%08x\n",
-	       readl((void __iomem *)(CCU_BASE + 0x0000)),
-	       readl((void __iomem *)(CCU_BASE + 0x0010)),
-	       readl((void __iomem *)(CCU_BASE + 0x0020)),
-	       readl((void __iomem *)(CCU_BASE + 0x0028)),
-	       readl((void __iomem *)(CCU_BASE + 0x0030)));
-	/*
-	 * Les registres d'adresse MAC sont à 0x50 (haut) et 0x54 (bas) — soit
-	 * `ADDR_HI(0)`/`ADDR_LO(0)` du vendor, pas 0x10/0x14 comme je l'avais
-	 * supposé : ce premier test concluait à tort que le bloc ignorait les
-	 * écritures.
-	 */
-	writel(0x0000beef, priv->base + 0x50);
-	writel(0xa1b2c3d4, priv->base + 0x54);
-	pr_err("MAC ADDR_HI/LO=%08x/%08x (écrit 0000beef/a1b2c3d4) syscfg 34=%08x\n",
-	       readl(priv->base + 0x50), readl(priv->base + 0x54),
-	       readl((void __iomem *)0x03000034));
-
-	/*
-	 * Reset logiciel du MAC, BORNÉ. Une horloge MAC absente laisse le bit
-	 * posé indéfiniment : sans borne, U-Boot se fige ici sans rien dire
-	 * (mesuré sur la H96 : plus aucune sortie console après `Net:`).
-	 */
-	dev_err(dev, "MAC avant reset : CTL1=%08x\n",
-		readl(priv->base + GMAC_BASIC_CTL1));
-	writel(SOFT_RST, priv->base + GMAC_BASIC_CTL1);
-	for (i = 0; i < 200; i++) {
-		if (!(readl(priv->base + GMAC_BASIC_CTL1) & SOFT_RST))
-			break;
-		mdelay(1);
-	}
-	/*
-	 * Mesuré : ce bit vaut déjà 1 au tout premier accès, avant toute
-	 * écriture — ce n'est donc pas un indicateur d'échec mais l'état par
-	 * défaut du bloc. On le journalise, on ne conclut plus rien.
-	 */
-	if (i == 200)
-		dev_err(dev, "CTL1 bit0 posé depuis le cold boot (CTL1=%08x)\n",
-			readl(priv->base + GMAC_BASIC_CTL1));
-
-	/* syscfg mesuré : la valeur du BSP coupe l'EPHY */
-	if (priv->syscfg)
-		writel(priv->syscfg_val, priv->syscfg);
-
-	/*
-	 * Détection de la PHY. Si le bus est muet, on rend -ENODEV : U-Boot
-	 * passe alors au périphérique suivant (le dongle USB-Ethernet), ce qui
-	 * est exactement le comportement voulu pour une image de famille.
-	 */
-	id = sunxi_gmac_phy_detect(priv);
-	if (id < 0) {
-		dev_err(dev, "aucune PHY sur MDIO, 32 adresses balayées : inutilisable ici\n");
-		return -ENODEV;
-	}
-	dev_err(dev, "PHY %08x à l'adresse %d, BMCR=%04x BMSR=%04x\n",
-		id, priv->phy_addr, gmac_mdio_read(priv, 0x00),
-		gmac_mdio_read(priv, 0x01));
-
-	/* Les quirks AC300 ne s'appliquent qu'à une AC300 : le reste est générique. */
-	if ((id & 0xffff0000) == (AC300_PHY_ID & 0xffff0000)) {
-		gmac_ac300_enable(priv);
-		gmac_ephy_cali(priv);
-		gmac_ac300_init(priv);
-	}
-
-	/* autoneg 100M full duplex, puis attente du lien */
+	/* autonégociation 100M plein duplex, puis attente du lien */
 	gmac_mdio_write(priv, 0x00, 0x1140 | BIT(9));
 	for (i = 0; i < 50; i++) {
 		mdelay(10);
@@ -730,8 +590,7 @@ static int sunxi_gmac_start(struct udevice *dev)
 	}
 	val = gmac_mdio_read(priv, 0x01);
 	if (i == 50 || val == 0xffff)
-		dev_err(dev, "lien PHY non établi (BMSR=%04x%s)\n", val,
-			val == 0xffff ? ", bus muet : aucune PHY ne répond" : "");
+		dev_err(dev, "lien PHY non établi (BMSR=%04x)\n", val);
 	else
 		dev_err(dev, "lien PHY établi (BMSR=%04x)\n", val);
 
@@ -936,6 +795,78 @@ static const struct eth_ops sunxi_gmac_ops = {
 
 /* ── probe ─────────────────────────────────────────────────────────────── */
 
+/*
+ * Mise en route du silicium, faite au probe : PLL, mux RMII, horloge de la
+ * PHY, reset du MAC, puis découverte de la PHY par balayage MDIO.
+ *
+ * L'échec est rendu ici et pas dans start() : U-Boot n'enregistre alors pas
+ * ce périphérique, donc `dhcp` ne peut pas partir sur un MAC dont la PHY est
+ * muette. C'est ce qui permet à une image de famille de servir une carte dont
+ * l'Ethernet interne est mort — le dongle USB-Ethernet devient le seul
+ * candidat réseau.
+ */
+static int sunxi_gmac_hw_init(struct udevice *dev)
+{
+	struct sunxi_gmac_priv *priv = dev_get_priv(dev);
+	u32 val;
+	int i, id;
+
+	/*
+	 * PLL_PERI0 est éteinte au démarrage (mesuré : 0x08003100, bit 31 = 0,
+	 * alors que PLL_PERI1 et PLL_VIDEO sont verrouillées). Son enfant ahb3
+	 * horloge bus-emac1 : sans elle les registres du MAC rendent des valeurs
+	 * figées et les écritures sont ignorées.
+	 */
+	val = readl((void __iomem *)(CCU_BASE + CCU_PLL_PERI0));
+	if (!(val & BIT(31))) {
+		writel(val | BIT(31) | BIT(29),
+		       (void __iomem *)(CCU_BASE + CCU_PLL_PERI0));
+		mdelay(2);
+	}
+
+	sunxi_gmac_mux_rmii();
+	sunxi_gmac_ephy_clock();
+
+	/* porte EPHY 25M : PLL_PERI0 / 24, le champ M de 0x970 est câblé */
+	val = readl((void __iomem *)(CCU_BASE + CCU_EPHY_25M));
+	val |= CCU_EPHY_25M_GATE;
+	writel(val, (void __iomem *)(CCU_BASE + CCU_EPHY_25M));
+
+	/*
+	 * Reset logiciel du MAC, BORNÉ : une horloge absente laisse le bit posé
+	 * indéfiniment et fige U-Boot. Le bit vaut déjà 1 au premier accès à
+	 * froid, ce n'est pas un indicateur d'échec.
+	 */
+	writel(SOFT_RST, priv->base + GMAC_BASIC_CTL1);
+	for (i = 0; i < 200; i++) {
+		if (!(readl(priv->base + GMAC_BASIC_CTL1) & SOFT_RST))
+			break;
+		mdelay(1);
+	}
+
+	/* syscfg mesuré : la valeur du BSP coupe l'EPHY */
+	if (priv->syscfg)
+		writel(priv->syscfg_val, priv->syscfg);
+
+	id = sunxi_gmac_phy_detect(priv);
+	if (id < 0) {
+		dev_err(dev, "aucune PHY sur MDIO (32 adresses) : périphérique écarté\n");
+		return -ENODEV;
+	}
+	dev_err(dev, "PHY %08x à l'adresse %d, BMCR=%04x BMSR=%04x\n",
+		id, priv->phy_addr, gmac_mdio_read(priv, 0x00),
+		gmac_mdio_read(priv, 0x01));
+
+	/* les quirks AC300 ne s'appliquent qu'à une AC300 : le reste est générique */
+	if ((id & 0xffff0000) == (AC300_PHY_ID & 0xffff0000)) {
+		gmac_ac300_enable(priv);
+		gmac_ephy_cali(priv);
+		gmac_ac300_init(priv);
+	}
+
+	return 0;
+}
+
 static int sunxi_gmac_probe(struct udevice *dev)
 {
 	struct sunxi_gmac_priv *priv = dev_get_priv(dev);
@@ -1028,7 +959,9 @@ static int sunxi_gmac_probe(struct udevice *dev)
 
 	dev_info(dev, "H616 GMAC prêt (syscfg %#x%s, DMA @ %#x)\n", priv->syscfg_val,
 		 priv->no_crc_check ? ", sans contrôle CRC" : "", GMAC_DMA_BASE);
-	return 0;
+
+	/* horloges, reset et PHY : un échec ici écarte le périphérique */
+	return sunxi_gmac_hw_init(dev);
 }
 
 static const struct udevice_id sunxi_gmac_ids[] = {
