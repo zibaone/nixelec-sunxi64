@@ -449,6 +449,82 @@ static void sunxi_gmac_ephy_clock(void)
 	writel(v, pwm + PWM_PER);
 }
 
+/*
+ * Sonde MDIO en bit-bang, PA8 (MDC) et PA9 (MDIO) en GPIO.
+ *
+ * Le moteur MDIO du MAC rend zéro pour tout registre et toute adresse : on ne
+ * sait donc pas si la PHY est muette ou si c'est le MAC qui ne sort rien. En
+ * pilotant les broches à la main, on interroge la PHY sans le MAC — une
+ * réponse accuse le MAC, un silence accuse la PHY. Le bus MDIO est synchrone
+ * et sans vitesse minimale : 2 µs par demi-période suffisent.
+ */
+#define PIO_PDAT		0x0010
+#define PIO_FUNC_GPIO		0x1
+
+static void bb_pin_mode(u32 func)
+{
+	u32 v = readl((void __iomem *)(SUNXI_PIO_BASE + PIO_PA_CFG1));
+
+	v &= ~0xff;
+	v |= (func << 4) | func;
+	writel(v, (void __iomem *)(SUNXI_PIO_BASE + PIO_PA_CFG1));
+}
+
+/* Pas de registre de direction sur sunxi : 1 relâche la broche, 0 la tire. */
+static void bb_set(u32 bit, int val)
+{
+	u32 v = readl((void __iomem *)(SUNXI_PIO_BASE + PIO_PDAT));
+
+	if (val)
+		v |= BIT(bit);
+	else
+		v &= ~BIT(bit);
+	writel(v, (void __iomem *)(SUNXI_PIO_BASE + PIO_PDAT));
+	udelay(2);
+}
+
+static int bb_get(u32 bit)
+{
+	return !!(readl((void __iomem *)(SUNXI_PIO_BASE + PIO_PDAT)) & BIT(bit));
+}
+
+static void bb_clock(void)
+{
+	bb_set(8, 1);
+	bb_set(8, 0);
+}
+
+/* Lecture clause 22 : préambule, ST=01, OP=10, adresse, registre, TA, 16 bits. */
+static u16 bb_read(int phy, int reg)
+{
+	u32 d = 0;
+	int i;
+
+	bb_set(9, 1);
+	for (i = 0; i < 32; i++)
+		bb_clock();
+	bb_set(9, 0); bb_clock();
+	bb_set(9, 1); bb_clock();
+	bb_set(9, 1); bb_clock();
+	bb_set(9, 0); bb_clock();
+	for (i = 4; i >= 0; i--) {
+		bb_set(9, (phy >> i) & 1);
+		bb_clock();
+	}
+	for (i = 4; i >= 0; i--) {
+		bb_set(9, (reg >> i) & 1);
+		bb_clock();
+	}
+	bb_set(9, 1);			/* turnaround : on relâche la ligne */
+	bb_clock();
+	bb_clock();
+	for (i = 15; i >= 0; i--) {
+		d = (d << 1) | bb_get(9);
+		bb_clock();
+	}
+	return (u16)d;
+}
+
 static int sunxi_gmac_start(struct udevice *dev)
 {
 	struct sunxi_gmac_priv *priv = dev_get_priv(dev);
@@ -476,6 +552,15 @@ static int sunxi_gmac_start(struct udevice *dev)
 		readl((void __iomem *)(PWM_BASE + PWM_PPR(PWM_EPHY_CHANNEL))),
 		readl((void __iomem *)(PWM_BASE + PWM_PER)));
 
+	/* sonde bit-bang : la PHY répond-elle seulement avec son horloge ? */
+	bb_pin_mode(PIO_FUNC_GPIO);
+	bb_set(9, 1);
+	udelay(50);
+	dev_err(dev, "MDIO bit-bang : repos=%d id@0=%04x/%04x id@16=%04x/%04x\n",
+		bb_get(9), bb_read(0, 2), bb_read(0, 3),
+		bb_read(16, 2), bb_read(16, 3));
+	sunxi_gmac_mux_rmii();
+
 	/*
 	 * Reset logiciel du MAC, BORNÉ. Une horloge MAC absente laisse le bit
 	 * posé indéfiniment : sans borne, U-Boot se fige ici sans rien dire
@@ -489,8 +574,13 @@ static int sunxi_gmac_start(struct udevice *dev)
 			break;
 		mdelay(1);
 	}
+	/*
+	 * Mesuré : ce bit vaut déjà 1 au tout premier accès, avant toute
+	 * écriture — ce n'est donc pas un indicateur d'échec mais l'état par
+	 * défaut du bloc. On le journalise, on ne conclut plus rien.
+	 */
 	if (i == 200)
-		dev_err(dev, "reset MAC bloqué (CTL1=%08x) — horloge MAC ?\n",
+		dev_err(dev, "CTL1 bit0 posé depuis le cold boot (CTL1=%08x)\n",
 			readl(priv->base + GMAC_BASIC_CTL1));
 
 	/* syscfg mesuré : la valeur du BSP coupe l'EPHY */
