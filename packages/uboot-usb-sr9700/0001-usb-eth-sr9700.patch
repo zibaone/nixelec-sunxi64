@@ -1,0 +1,21 @@
+--- a/drivers/usb/eth/Kconfig
++++ b/drivers/usb/eth/Kconfig
+@@ -62,4 +62,11 @@
+ 	  Say Y here if you would like to support SMSC LAN95xx based USB 2.0
+ 	  Ethernet Devices.
+ 
++config USB_ETHER_SR9700
++	bool "CoreChip SR9700 support"
++	depends on USB_HOST_ETHER
++	---help---
++	  Say Y here if you would like to support CoreChip SR9700 based USB 1.1
++	  Ethernet devices. These are 10Mbps half-duplex only.
++
+ endif
+--- a/drivers/usb/eth/Makefile
++++ b/drivers/usb/eth/Makefile
+@@ -12,3 +12,4 @@
+ obj-$(CONFIG_USB_ETHER_LAN75XX) += lan7x.o lan75xx.o
+ obj-$(CONFIG_USB_ETHER_LAN78XX) += lan7x.o lan78xx.o
+ obj-$(CONFIG_USB_ETHER_RTL8152) += r8152.o r8152_fw.o
++obj-$(CONFIG_USB_ETHER_SR9700) += sr9700.o

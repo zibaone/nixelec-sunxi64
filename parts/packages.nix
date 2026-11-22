@@ -44,9 +44,11 @@
             # ──────────────────────────────────────────────────────────────
             patches = (base.drvAttrs.patches or [ ]) ++ [
               ./../packages/uboot-sunxi-gmac/0001-net-sunxi-gmac.patch
+              ./../packages/uboot-usb-sr9700/0001-usb-eth-sr9700.patch
             ];
             postPatch = (base.drvAttrs.postPatch or "") + ''
               cp ${./../packages/uboot-sunxi-gmac/sunxi_gmac.c} drivers/net/sunxi_gmac.c
+              cp ${./../packages/uboot-usb-sr9700/sr9700.c} drivers/usb/eth/sr9700.c
             '';
             extraConfig = ''
               # `pxe` et non `dhcp` : la cible `dhcp` de distro_bootcmd source
@@ -87,6 +89,9 @@
               CONFIG_USB_ETHER_MCS7830=y
               CONFIG_USB_ETHER_LAN75XX=y
               CONFIG_USB_ETHER_LAN78XX=y
+              # Les dongles 10/100M pleine vitesse (SR9700 et clones), portés
+              # depuis le noyau : aucun pilote amont ne les couvre.
+              CONFIG_USB_ETHER_SR9700=y
               # Non couverts par U-Boot mainline, à ce jour : SR9700,
               # DM9601, CH9200 — puces 10/100M pleine vitesse des dongles
               # bon marché. Mesuré le 2026-11-22 : un tel dongle s'énumère
