@@ -14,6 +14,7 @@
 #include <dm.h>
 #include <errno.h>
 #include <log.h>
+#include <asm/cache.h>
 #include <memalign.h>
 #include <net.h>
 #include <usb.h>
@@ -276,11 +277,103 @@ static int sr9700_read_rom_hwaddr(struct udevice *dev)
 	return 0;
 }
 
+/*
+ * Enregistrement aupres du cadre usb_ether, avec une difference : on choisit
+ * l'interface. `usb_ether_register()` force l'interface 0, ce qui ne convient
+ * qu'a la puce nue : la variante 0fe6:9702 expose un CD-ROM virtuel en
+ * interface 0 et l'Ethernet en interface 1. On reproduit donc la decouverte
+ * des points de terminaison, en gardant les memes exigences (bulk IN, bulk
+ * OUT et interruption).
+ */
+static int sr9700_register(struct udevice *dev, struct ueth_data *ueth,
+			   int ifnum, int rxsize)
+{
+	struct usb_device *udev = dev_get_parent_priv(dev);
+	struct usb_interface *iface;
+	struct usb_interface_descriptor *iface_desc;
+	bool ep_in_found = false, ep_out_found = false;
+	int i, ret;
+
+	if (ifnum >= udev->config.no_of_if)
+		return -ENODEV;
+
+	iface = &udev->config.if_desc[ifnum];
+	iface_desc = &iface->desc;
+
+	ueth->ifnum = ifnum;
+	ueth->subclass = iface_desc->bInterfaceSubClass;
+	ueth->protocol = iface_desc->bInterfaceProtocol;
+	ueth->ep_in = 0;
+	ueth->ep_out = 0;
+	ueth->ep_int = 0;
+
+	for (i = 0; i < iface_desc->bNumEndpoints; i++) {
+		int ep_addr = iface->ep_desc[i].bEndpointAddress;
+
+		if ((iface->ep_desc[i].bmAttributes &
+		     USB_ENDPOINT_XFERTYPE_MASK) == USB_ENDPOINT_XFER_BULK) {
+			if ((ep_addr & USB_DIR_IN) && !ep_in_found) {
+				ueth->ep_in = ep_addr & USB_ENDPOINT_NUMBER_MASK;
+				ep_in_found = true;
+			} else if (!(ep_addr & USB_DIR_IN) && !ep_out_found) {
+				ueth->ep_out = ep_addr & USB_ENDPOINT_NUMBER_MASK;
+				ep_out_found = true;
+			}
+		}
+
+		if ((iface->ep_desc[i].bmAttributes &
+		     USB_ENDPOINT_XFERTYPE_MASK) == USB_ENDPOINT_XFER_INT) {
+			ueth->ep_int = iface->ep_desc[i].bEndpointAddress &
+				       USB_ENDPOINT_NUMBER_MASK;
+			ueth->irqinterval = iface->ep_desc[i].bInterval;
+		}
+	}
+
+	if (!ueth->ep_in || !ueth->ep_out || !ueth->ep_int) {
+		printf("sr9700: interface %d sans les trois points de terminaison\n",
+		       ifnum);
+		return -ENXIO;
+	}
+
+	ueth->rxsize = rxsize;
+	ueth->rxbuf = memalign(ARCH_DMA_MINALIGN, rxsize);
+	if (!ueth->rxbuf)
+		return -ENOMEM;
+
+	ret = usb_set_interface(udev, iface_desc->bInterfaceNumber, ifnum);
+	if (ret)
+		return ret;
+
+	ueth->pusb_dev = udev;
+
+	return 0;
+}
+
 static int sr9700_eth_probe(struct udevice *dev)
 {
 	struct sr9700_priv *priv = dev_get_priv(dev);
+	struct usb_device *udev = dev_get_parent_priv(dev);
+	int ret;
 
-	return usb_ether_register(dev, &priv->ueth, RX_URB_SIZE);
+	/*
+	 * 0fe6:9702 = CD-ROM virtuel en interface 0, Ethernet en interface 1.
+	 * Les deux references existent ; on essaie l'interface attendue, puis
+	 * l'autre, pour ne pas dependre du numero de produit declare.
+	 */
+	if (udev->descriptor.idProduct == 0x9702)
+		ret = sr9700_register(dev, &priv->ueth, 1, RX_URB_SIZE);
+	else
+		ret = sr9700_register(dev, &priv->ueth, 0, RX_URB_SIZE);
+
+	if (ret) {
+		ret = sr9700_register(dev, &priv->ueth,
+				      udev->descriptor.idProduct == 0x9702 ? 0 : 1,
+				      RX_URB_SIZE);
+		if (ret)
+			printf("sr9700: enregistrement impossible (%d)\n", ret);
+	}
+
+	return ret;
 }
 
 static void sr9700_eth_stop(struct udevice *dev)
@@ -311,7 +404,8 @@ U_BOOT_DRIVER(sr9700_eth) = {
  * interface 0, l'Ethernet étant alors l'interface 1 — non couvert ici.
  */
 static const struct usb_device_id sr9700_eth_id_table[] = {
-	{ USB_DEVICE(0x0fe6, 0x9700) },
+	{ USB_DEVICE(0x0fe6, 0x9700) },	/* puce nue */
+	{ USB_DEVICE(0x0fe6, 0x9702) },	/* avec CD-ROM virtuel, Ethernet = interface 1 */
 	{ }
 };
 
