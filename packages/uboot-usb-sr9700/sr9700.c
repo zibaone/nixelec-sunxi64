@@ -169,6 +169,29 @@ static int sr9700_eth_start(struct udevice *dev)
 	return 0;
 }
 
+/*
+ * L'endpoint d'interruption porte l'etat de la puce : b1 = NSR, b2 = TSR1,
+ * b3 = TSR2, b4 = RSR, b5 = debordement RX, b6 = compteur RX, b7 = compteur
+ * TX, b8 = registre general. Le pilote noyau y soumet un URB en permanence ;
+ * sans lecture, les compteurs de la puce saturent et elle finit par bloquer
+ * les transferts (mesure : premier envoi accepte, suivant en -EIO).
+ */
+static void sr9700_poll_int(struct sr9700_priv *priv)
+{
+	u8 st[8] = { 0 };
+	int ret;
+
+	if (!priv->ueth.ep_int)
+		return;
+
+	ret = usb_int_msg(priv->ueth.pusb_dev,
+			  usb_rcvintpipe(priv->ueth.pusb_dev, priv->ueth.ep_int),
+			  st, sizeof(st), priv->ueth.irqinterval, true);
+	if (priv->tx_dbg < 6)
+		printf("sr9700: int ret=%d nsr=%02x tsr1=%02x tsr2=%02x rsr=%02x\n",
+		       ret, st[0], st[1], st[2], st[3]);
+}
+
 static int sr9700_eth_send(struct udevice *dev, void *packet, int length)
 {
 	struct sr9700_priv *priv = dev_get_priv(dev);
@@ -196,6 +219,8 @@ static int sr9700_eth_send(struct udevice *dev, void *packet, int length)
 	ret = usb_bulk_msg(udev, usb_sndbulkpipe(udev, priv->ueth.ep_out),
 			   msg, length + SR_TX_OVERHEAD, &actual,
 			   USB_BULK_SEND_TIMEOUT);
+
+	sr9700_poll_int(priv);
 
 	/* Trace des premiers envois : la puce a-t-elle transmis ? */
 	if (priv->tx_dbg < 4) {
@@ -227,9 +252,13 @@ static int sr9700_eth_recv(struct udevice *dev, int flags, uchar **packetp)
 		if (!(flags & ETH_RECV_CHECK_DEVICE))
 			return -EAGAIN;
 
+		sr9700_poll_int(priv);
 		ret = usb_ether_receive(ueth, RX_URB_SIZE);
-		if (ret)
-			return ret;
+		if (ret) {
+			/* un timeout n'est pas une faute : on repassera */
+			sr9700_poll_int(priv);
+			return -EAGAIN;
+		}
 
 		len = usb_ether_get_rx_bytes(ueth, &ptr);
 		if (!len)
