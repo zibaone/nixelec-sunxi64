@@ -899,10 +899,16 @@ static int sunxi_gmac_probe(struct udevice *dev)
 	if (addr != FDT_ADDR_T_NONE)
 		priv->syscfg = map_physmem(addr, 4, MAP_NOCACHE);
 
+	/*
+	 * Pas de valeur par défaut : écrire 0x3fe1 (valeur Transpeed) sur la
+	 * H96 fait retomber MDIO DATA de 0xffff à 0x0000 — mesuré. Sans
+	 * propriété dans le DT, on laisse le registre tel que le bootloader
+	 * l'a laissé (0x00058000 sur cette carte).
+	 */
 	if (dev_read_u32(dev, "allwinner,syscfg-value", &val) == 0)
 		priv->syscfg_val = val;
 	else
-		priv->syscfg_val = 0x3fe1;
+		priv->syscfg = NULL;
 
 	priv->no_crc_check = dev_read_bool(dev, "allwinner,no-crc-check");
 	priv->phy_addr = dev_read_u32_default(dev, "phy-addr", 0);

@@ -27,7 +27,7 @@
  obj-$(CONFIG_VSC7385_ENET) += vsc7385.o
 --- a/dts/upstream/src/arm64/allwinner/sun50i-h618-transpeed-8k618-t.dts
 +++ b/dts/upstream/src/arm64/allwinner/sun50i-h618-transpeed-8k618-t.dts
-@@ -198,3 +198,27 @@
+@@ -198,3 +198,28 @@
  &usbphy {
  	status = "okay";
  };
@@ -36,8 +36,10 @@
 + * Ethernet : le RJ45 est sur EMAC1, relie au PHY AC300 co-packaged.
 + * Le dtsi amont ne declare que emac0, desactive, et aucun pilote mainline
 + * ne recoit de trame sur cette carte (voir le noyau : sunxi-gmac vendor).
-+ * Deux proprietes mesurees : syscfg 0x3fe1 (la valeur du BSP coupe l'EPHY)
-+ * et no-crc-check (le MAC compte 7 octets de preambule dans la longueur).
++ * `no-crc-check` : le MAC compte 7 octets de preambule dans la longueur.
++ * Pas de `syscfg-value` : 0x3fe1 est la valeur Transpeed, et l'ecrire fait
++ * retomber MDIO DATA de 0xffff a 0x0000 (mesure sur la H96) ; au boot le
++ * registre vaut 0x00058000 et on n'y touche pas.
 + */
 +&{/soc} {
 +	emac1: ethernet@5030000 {
@@ -50,7 +52,6 @@
 +		reset-names = "gmac";
 +		phy-mode = "rmii";
 +		phy-addr = <0>;
-+		allwinner,syscfg-value = <0x3fe1>;
 +		allwinner,no-crc-check;
 +		status = "okay";
 +	};
