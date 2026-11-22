@@ -112,6 +112,7 @@
 
 /* CCU : horloge EPHY 25M (registre 0x970, portes bits 31:30) */
 #define CCU_BASE		0x03001000
+#define CCU_PLL_PERI0		0x0028	/* PLL6 : parent d'ahb3, donc du MAC */
 #define CCU_EPHY_25M		0x0970
 #define CCU_EPHY_25M_GATE	(BIT(31) | BIT(30))
 
@@ -532,8 +533,50 @@ static int sunxi_gmac_start(struct udevice *dev)
 	u32 val;
 	int i, id;
 
+	/*
+	 * PLL_PERI0 est éteinte au démarrage — mesuré sur la carte :
+	 * 0x08003100, bit 31 = 0, alors que PLL_PERI1 et PLL_VIDEO, elles,
+	 * sont verrouillées. Son enfant ahb3 horloge bus-emac1, donc le bloc
+	 * MAC : sans elle, les registres rendent des valeurs figées et les
+	 * écritures sont ignorées (mesuré : ADDR0 écrit a1b2c3d4 relu
+	 * 80000000). On l'allume avant tout accès au MAC.
+	 */
+	val = readl((void __iomem *)(CCU_BASE + CCU_PLL_PERI0));
+	if (!(val & BIT(31))) {
+		writel(val | BIT(31) | BIT(29),
+		       (void __iomem *)(CCU_BASE + CCU_PLL_PERI0));
+		mdelay(2);
+	}
+	dev_err(dev, "PLL_PERI0=%08x (verrou=%d)\n",
+		readl((void __iomem *)(CCU_BASE + CCU_PLL_PERI0)),
+		!!(readl((void __iomem *)(CCU_BASE + CCU_PLL_PERI0)) & BIT(28)));
+
 	sunxi_gmac_mux_rmii();
 	sunxi_gmac_ephy_clock();
+
+	/*
+	 * Porte et diviseur de l'horloge EPHY 25M.
+	 *
+	 * Le mainline ne modélise que les deux portes (bits 31:30) ; le champ
+	 * M (bits 0-3) reste à zéro, soit une division par 1 : la PHY recevrait
+	 * alors la source entière au lieu de 25 MHz. On balaie les valeurs
+	 * plausibles et on retient celle qui rend le bloc MAC inscriptible —
+	 * c'est le seul juge, la PHY ne répondant pas encore.
+	 */
+	{
+		static const u32 divs[] = { 0x0, 0x17, 0x18, 0x0b, 0x0f };
+
+		for (i = 0; i < ARRAY_SIZE(divs); i++) {
+			writel(CCU_EPHY_25M_GATE | divs[i],
+			       (void __iomem *)(CCU_BASE + CCU_EPHY_25M));
+			udelay(200);
+			writel(0xa1b2c3d4, priv->base + 0x10);
+			pr_err("EPHY 970=%08x : ADDR0 relu %08x, MDIO DATA=%08x\n",
+			       readl((void __iomem *)(CCU_BASE + CCU_EPHY_25M)),
+			       readl(priv->base + 0x10),
+			       gmac_mdio_read(priv, 0x02));
+		}
+	}
 
 	/* CCU : porte EPHY 25M (PLL_PERI0 / 24 = 25 MHz) */
 	val = readl((void __iomem *)(CCU_BASE + CCU_EPHY_25M));
@@ -556,10 +599,35 @@ static int sunxi_gmac_start(struct udevice *dev)
 	bb_pin_mode(PIO_FUNC_GPIO);
 	bb_set(9, 1);
 	udelay(50);
-	dev_err(dev, "MDIO bit-bang : repos=%d id@0=%04x/%04x id@16=%04x/%04x\n",
-		bb_get(9), bb_read(0, 2), bb_read(0, 3),
-		bb_read(16, 2), bb_read(16, 3));
+	pr_err("bit-bang : repos=%d\n", bb_get(9));
+	/* balayage : toute adresse qui répond n'est ni 0xffff ni 0 */
+	for (i = 0; i < 32; i++) {
+		u16 id1 = bb_read(i, 2);
+		u16 id2 = bb_read(i, 3);
+
+		if ((id1 != 0xffff || id2 != 0xffff) && id1 != 0x0000)
+			pr_err("bit-bang : PHY à l'adresse %d, id %04x%04x, BMCR=%04x\n",
+			       i, id1, id2, bb_read(i, 0));
+	}
+	pr_err("bit-bang : balayage 0-31 terminé\n");
 	sunxi_gmac_mux_rmii();
+
+	/*
+	 * Le bloc MAC répond-il vraiment ? Un registre de données neutre
+	 * (ADDR0 bas/haut) doit rendre exactement ce qu'on y écrit ; sinon le
+	 * bloc n'est pas accessible et tout le reste du diagnostic est du bruit.
+	 */
+	pr_err("CCU PLL CPUX=%08x VIDEO=%08x PERI1=%08x PERI0=%08x DE=%08x\n",
+	       readl((void __iomem *)(CCU_BASE + 0x0000)),
+	       readl((void __iomem *)(CCU_BASE + 0x0010)),
+	       readl((void __iomem *)(CCU_BASE + 0x0020)),
+	       readl((void __iomem *)(CCU_BASE + 0x0028)),
+	       readl((void __iomem *)(CCU_BASE + 0x0030)));
+	writel(0xa1b2c3d4, priv->base + 0x10);
+	writel(0x0000ffff, priv->base + 0x14);
+	pr_err("MAC ADDR0=%08x/%08x (écrit a1b2c3d4/0000ffff) syscfg 34=%08x\n",
+	       readl(priv->base + 0x10), readl(priv->base + 0x14),
+	       readl((void __iomem *)0x03000034));
 
 	/*
 	 * Reset logiciel du MAC, BORNÉ. Une horloge MAC absente laisse le bit
