@@ -106,6 +106,7 @@ static int sr9700_write_reg(struct usb_device *udev, u8 reg, u8 value)
 
 static int sr9700_eth_start(struct udevice *dev)
 {
+	printf("sr9700: start appele\n");
 	struct eth_pdata *pdata = dev_get_plat(dev);
 	struct sr9700_priv *priv = dev_get_priv(dev);
 	struct usb_device *udev = priv->ueth.pusb_dev;
@@ -353,7 +354,17 @@ static int sr9700_eth_probe(struct udevice *dev)
 {
 	struct sr9700_priv *priv = dev_get_priv(dev);
 	struct usb_device *udev = dev_get_parent_priv(dev);
-	int ret;
+	int ret, i;
+
+	/* Trace de mise au point : on veut savoir si le probe est appele. */
+	printf("sr9700: probe %04x:%04x, %d interface(s)\n",
+	       udev->descriptor.idVendor, udev->descriptor.idProduct,
+	       udev->config.no_of_if);
+	for (i = 0; i < udev->config.no_of_if; i++)
+		printf("sr9700:   itf %d class %02x/%02x, %d ep\n", i,
+		       udev->config.if_desc[i].desc.bInterfaceClass,
+		       udev->config.if_desc[i].desc.bInterfaceSubClass,
+		       udev->config.if_desc[i].desc.bNumEndpoints);
 
 	/*
 	 * 0fe6:9702 = CD-ROM virtuel en interface 0, Ethernet en interface 1.

@@ -48,6 +48,7 @@
               # `usb info` n'affiche pas le VID/PID : on l'ajoute, c'est le
               # seul moyen de reconnaitre une puce sans son pilote.
               ./../packages/uboot-usb-sr9700/0002-usb-info-vid-pid.patch
+              ./../packages/uboot-usb-sr9700/0003-diag-usb-match.patch
             ];
             postPatch = (base.drvAttrs.postPatch or "") + ''
               cp ${./../packages/uboot-sunxi-gmac/sunxi_gmac.c} drivers/net/sunxi_gmac.c
