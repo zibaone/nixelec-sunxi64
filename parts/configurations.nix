@@ -114,6 +114,11 @@
         nixelec.frontPanel.chip = "/dev/gpiochip1";
         nixelec.frontPanel.clk = 226;
         nixelec.frontPanel.dat = 227;
+        # `pushPull = true` depuis le 2026-11-19 : avec le noyau de famille,
+        # l'open-drain + pull-up interne ne ramene pas la ligne a l'etat haut
+        # (dalle eteinte alors que `fd6xx` sort 0) ; en push-pull l'ecran
+        # s'allume. La donnee de la H96 autonome etait restee en open-drain.
+        nixelec.frontPanel.pushPull = true;
         nixelec.frontPanel.text = "H96";
         # IR : le DTS de carte laisse `ir@7040000` en `disabled` (verifie sur
         # le DTB deploye), contrairement a la Transpeed, d'ou l'overlay.
