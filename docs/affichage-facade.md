@@ -209,17 +209,32 @@ Les trois réglages sont des options de l'outil (`--push-pull`, `--ltr`) ou du m
 
 Le chemin noyau naturel — `i2c-gpio` sur les deux GPIO + `tm16xx_i2c`
 (compatible `fdhisi,fd650`, present dans le jeu de patches Armbian
-`general-driver-tm16xx-led-driver.patch`) — est **bloque par une mesure** :
-`i2c-gpio` exige un ACK de l'esclave et rend `-ENXIO` au premier octet ; la
-puce n'ACK pas. Le noyau ne peut donc pas la piloter sans un pilote dedie.
+`general-driver-tm16xx-led-driver.patch`) — a d'abord ete **bloque par une
+mesure** : en mode bidirectionnel, `i2c-gpio` lit l'ACK de l'esclave et rend
+`-ENXIO` au premier octet ; la puce n'ACK pas.
+
+**Correction du 2026-11-23** : ce n'est pas une impasse du noyau. Le mainline
+sait depuis 2023 ne pas lire SDA/SCL (`i2c-gpio,sda-output-only`,
+`i2c-gpio,scl-output-only`), precisement pour les controleurs FD650 et
+derives ; le driver tiers `leds-fd6551` documente cette combinaison
+(`reg` `state`/`icon-set`/`dig1..4`, soit `0x48`/`0x66`/`0x68..0x6E` sur le
+fil). Le `-ENXIO` mesure venait donc du mode bidirectionnel, pas de la puce.
+
+Ce qui reste vrai : le chemin noyau demande un module hors arbre (pas une
+recompilation complete du noyau, mais un build par noyau de famille) et un
+`.dtbo` ; il apporte la description dans le DT et les icones en LED class,
+mais il itere beaucoup moins vite que `fd6xx`. L'outil en espace utilisateur
+reste le bon choix pour figer le protocole et mesurer les bits ; le module
+noyau redevient un candidat serieux pour l'etat final, sans le cout « patch
+noyau a chaque essai » qui avait motive le choix initial.
 
 Ce que le pilote noyau apporterait, et qui reste l'objectif si l'afficheur
 devient un produit : survie aux mises a jour, description dans le DT, pas de
-daemon. Ce qu'il coute : un pilote bit-bang maison (pas i2c-gpio), une
-recompilation de noyau aarch64 par iteration (~45 min a 3 h sous emulation
-sur ce poste), et un acces aux GPIO qui ne peut pas casser un boot. L'outil en
-espace utilisateur permet d'iterer en secondes et de figer le protocole avant
-d'ecrire le pilote — c'est l'ordre qui a du sens.
+daemon, et des icones en LED class. Ce qu'il coute : un module hors arbre a
+maintenir par noyau de famille (un build de module, pas une recompilation
+complete), un `.dtbo`, et un acces aux GPIO qui ne peut pas casser un boot.
+L'outil en espace utilisateur permet d'iterer en secondes et de figer le
+protocole avant d'ecrire le module — c'est l'ordre qui a du sens.
 
 ## 5. Verification
 
@@ -244,3 +259,168 @@ afficheur ne peut pas empecher une carte de demarrer. Les broches
 (`chip`, `clk`, `dat`) sont des **donnees de carte** : l'eval refuse
 `enable = true` s'il en manque une. Les valeurs mesurees sont posees dans
 `parts/configurations.nix` (H96 : 226/227 ; Transpeed : 267/268).
+
+## 7. Icones et colonne : modele generique
+
+`fd6xx` expose maintenant un rendu complet, `show`, qui compose le texte et
+des bits arbitraires dans une seule trame :
+
+```sh
+fd6xx --chip /dev/gpiochip1 --clk 267 --dat 268 --push-pull --ltr \
+      --digits 4 --base 0x68 --stride 2 \
+      show --text 8618 --bit 0x66:0x20 --clear 0x66:0x40
+```
+
+Chaque `ADDR:MASK` est applique a l'octet de l'adresse : si l'adresse est une
+grille de chiffre (`base + stride*i`), le bit est OR/AND dans l'octet du
+chiffre — c'est le cas d'une colonne portee par le point decimal ; sinon
+l'outil emet une transaction separee. `--bit` allume, `--clear` eteint.
+`show` est volontairement **un rendu complet** : la puce n'a pas de lecture de
+la RAM d'affichage, donc toutes les icones connues du profil doivent etre
+passees, actives ou non, sinon une ancienne icone reste allumee.
+
+Un `--dry-run` global imprime la trame composee sans ouvrir le GPIO : c'est le
+moyen de verifier les arguments generes par Nix sur le poste x86, avant tout
+deploiement.
+
+```sh
+fd6xx ... --dry-run show --text 8618 --bit 0x66:0x20
+# grid[0] addr=0x68 byte=0x7f ... extra addr=0x66 byte=0x20
+```
+
+Deux commandes servent a decouvrir les bits, pas a les deviner :
+
+```sh
+fd6xx ... test                       # tous les segments, colonne incluse
+fd6xx ... scan --scan-delay 800      # un bit a la fois sur les 5 grilles
+fd6xx ... scan --addr 0x66 --scan-delay 800   # un bit a la fois sur une adresse
+fd6xx ... raw 0x66 0x20              # ecriture brute, pour sonder
+```
+
+`scan` affiche sur stderr `grid=N addr=0x.. mask=0x..` avant chaque bit : on
+regarde la dalle, on note ce qui s'allume, puis on restaure le texte avec
+`write` ou `show`.
+
+Cote Nix, le profil de dalle est une donnee de carte :
+
+```nix
+nixelec.frontPanel = {
+  enable = true;
+  chip = "/dev/gpiochip1";
+  clk = 267;
+  dat = 268;
+  pushPull = true;
+  leftToRight = true;
+  text = "8618";
+
+  layout = {
+    digits = 4;
+    digitBase = 104;  # 0x68
+    digitStride = 2;
+    icons = {
+      eth  = { address = 102; mask = 32; };   # 0x66 / 0x20
+      wifi = { address = 102; mask = 64; };   # 0x66 / 0x40
+    };
+  };
+
+  icons = [ "eth" ];          # etat statique au boot
+  status.enable = true;       # eth0/wlan0 -> icones, timer 30 s
+};
+```
+
+Les noms suivent le vocabulaire OpenVFD (`alarm`, `usb`, `play`, `pause`,
+`colon`, `eth`, `wifi`, `hdmi`, `cvbs`, `sd`, etc.). Une icone absente de
+`layout.icons` n'existe pas sur cette dalle : la demander dans `icons` fait
+echouer l'eval. Le module genere un service `front-panel-status` (timer, pas
+de daemon) qui lit `/sys/class/net/<if>/operstate` pour Ethernet et
+`iw dev <if> link` pour le WiFi, puis reecrit l'etat complet. Le timer couvre
+aussi la fenetre ou le bring-up video reinitialise le banc PIO.
+
+## 8. H96 : colonne et icone USB, bits a mesurer
+
+Constat visuel de l'utilisateur (2026-11-23) : **la H96 a une colonne (`:`) et
+une icone `usb`, peut-etre une autre au-dessus**. Ce n'est donc pas une dalle
+purement chiffres : elle a une rangee d'icones, meme si le DTS vendor ne
+declare que `leds_clk`/`leds_dat` et aucune table d'icones.
+
+Deux sources independantes donnent le meme ordre **partiel** des bits, sans
+avoir ete mesurees sur cette carte :
+
+- le driver tiers `leds-fd6551` documente un jeu par defaut `clock` bit 0,
+  `usb` bit 1, `pause` bit 2, `play` bit 3, `colon` bit 4, `net` bit 5,
+  `wifi` bit 6 — en precisant lui-meme qu'il faut experimenter ;
+- la table vendor de la Transpeed donne `alarm` 0x01, `usb` 0x02, `play` 0x04,
+  `pause` 0x08, `colon` 0x10, `eth` 0x20, `wifi` 0x40.
+
+Les deux concordent sur `usb` = bit 1 (0x02) et `colon` = bit 4 (0x10) ; elles
+divergent sur l'ordre play/pause. C'est une **hypothese de depart** pour la
+mesure, pas un profil.
+
+La consequence pratique est importante : l'octet d'icones n'est **pas** une
+grille de chiffre. La disposition des commandes FD650/FD655 le donne :
+
+| Registre (datasheet, `reg`) | Commande sur le fil (`reg × 2`) | Role |
+|---|---|---|
+| `state` 0x24 | **0x48** | controle/luminosite |
+| `icon-set` 0x33 | **0x66** | octet des icones |
+| `dig1` 0x34 | **0x68** | chiffre 1 |
+| `dig2` 0x35 | **0x6A** | chiffre 2 |
+| `dig3` 0x36 | **0x6C** | chiffre 3 |
+| `dig4` 0x37 | **0x6E** | chiffre 4 |
+| `dig5` 0x38 | **0x70** | chiffre 5 (H96, extrapole : le driver tiers s'arrete a `dig4`) |
+
+Le driver tiers `leds-fd6551` documente exactement ces registres
+(`state`, `icon-set`, `dig1`..`dig4`) et un jeu d'icones par defaut. Les
+adresses mesurees sur nos deux dalles (`0x48`, `0x68`..`0x70`) coincident :
+**l'octet d'icones est donc `0x66`, pas `0x70`**. C'est aussi ce que fait le
+vendor Transpeed : son `write_buffer[0]` (masque d'icones) est ecrit juste
+avant les quatre chiffres.
+
+Consequence pour le service actuel : `write`/`blank` ecrivent `0x68`..`0x70`
+et **ne touchent jamais `0x66`**. La colonne et l'USB ne sont donc ni allumes
+ni eteints par le boot ; ils restent dans l'etat laisse par le firmware
+precedent. C'est pour cela qu'ils n'apparaissent pas dans nos mesures.
+
+Procedure de mesure :
+
+```sh
+# 1. segments des chiffres, puis tous les bits de l'octet d'icones
+fd6xx --chip /dev/gpiochip1 --clk 226 --dat 227 test
+fd6xx --chip /dev/gpiochip1 --clk 226 --dat 227 raw 0x66 0x7f
+
+# 2. l'octet d'icones : un bit a la fois, en commencant par les candidats
+#    usb=0x02 et colon=0x10
+fd6xx --chip /dev/gpiochip1 --clk 226 --dat 227 scan --addr 0x66 --scan-delay 1200
+
+# 3. si la colonne est portee par le point decimal d'une grille, balayer
+#    les cinq grilles
+fd6xx --chip /dev/gpiochip1 --clk 226 --dat 227 scan --scan-delay 1200
+```
+
+`scan`/`show`/`raw` sont dans la version courante de `fd6xx` ; sur une
+installation qui porte encore l'ancien binaire, `seg` ne sait pas ecrire
+`0x66` (il ne couvre que `0x68`..`0x70`) : il faut deployer le module a jour
+ou copier le nouveau binaire.
+
+Profil H96 — les candidats `usb`/`colon` viennent des deux tables ci-dessus,
+mais **les masques restent a confirmer a l'ecran** :
+
+```nix
+layout = {
+  digits = 5;              # H96 : cinq grilles mesurees
+  digitBase = 104;         # 0x68, chiffre de droite sur la H96
+  digitStride = 2;
+  icons = {
+    usb   = { address = 102; mask = 2; };   # 0x66 / 0x02 (candidat)
+    colon = { address = 102; mask = 16; };  # 0x66 / 0x10 (candidat)
+  };
+};
+icons = [ "colon" "usb" ];
+```
+
+Tant que la mesure n'est pas faite, ne pas activer `icons` : une mauvaise
+adresse ou un mauvais bit peut eteindre un chiffre, et le service de boot doit
+rester en texte seul. La Transpeed, elle, a un candidat vendor pour le meme
+octet `0x66` (`0x01 alarm`, `0x02 usb`, `0x04 play`, `0x08 pause`,
+`0x10 colon`, `0x20 eth`, `0x40 wifi`) mais **rien n'est mesure a l'ecran** :
+c'est une hypothese de travail, pas un profil.
