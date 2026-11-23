@@ -103,6 +103,7 @@ versions. À re-mesurer avant d'écrire le `-EPROBE_DEFER` du chantier 3.
 | 8 | `CONFIG_KEXEC` absent | capacité | 30 min + 1 rebuild | — |
 | 9 | Loopback MAC en test scripté | outillage | 1 h | — |
 | 10 | Panique `brcmfmac` (WiFi) | chantier de fond | élevé | — |
+| 11 | WoL Ethernet (magic packet) | fonctionnalité | L | — |
 
 ---
 
@@ -344,6 +345,22 @@ l'interface monte. La panique survient au début du trafic radio, pas au probe.
 
 **Coût** : élevé, et c'est le vrai blocage pour un kiosque sans câble. À
 traiter comme un chantier à part, pas comme une finition du portage Ethernet.
+
+## 11. WoL Ethernet (magic packet)
+
+**Symptôme** : `ethtool -s eth0 wol g` ne fait rien ; `get_wol` écrit
+`Not support WOL`.
+
+**Preuve** : dans `packages/sunxi-gmac/src/sunxi-gmac.c`, `get_wol` et
+`set_wol` sont des TODO (`Not support WOL`), et `sunxi_gmac_suspend()` appelle
+`sunxi_gmac_power_off()` + `clk_disable()` : le MAC/PHY est éteint en suspend.
+
+**Correction** : programmer le PMT/magic packet du MAC, garder la PHY AC300
+et son horloge 24 MHz (PWM5) alimentées en `s2idle`, armer l'IRQ de wake.
+C'est une fonctionnalité du port gmac, pas une finition ; la H96 utilise le
+même paquet. Voir [`chantiers-reveil.md`](chantiers-reveil.md).
+
+**Coût** : L, et la H96 doit être câblée (`eth0` sans porteuse aujourd'hui).
 
 ---
 

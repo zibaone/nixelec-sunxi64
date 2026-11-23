@@ -136,10 +136,25 @@ Sur la carte, après déploiement :
 dmesg | grep -i sunxi-ir                 # « initialized sunXi IR driver »
 ls /sys/class/rc/                        # rcN + le device CEC s'il existe
 cat /sys/class/rc/rc0/protocols          # doit contenir [nec]
-ir-keytable -r | grep -c '^scancode'     # 172 attendus (les six tables)
+ir-keytable -r | grep -c '^scancode'     # 172 dans la couche publique (six tables)
 systemctl status ir-keymap               # oneshot, sortie 0
 ```
 
 Critère d'acceptation : le device dont `protocols` contient `nec` accepte
 `-p nec`, et le device CEC le refuse. La preuve finale reste la touche qui
 arrive à Kodi — pas `systemctl is-active`.
+
+Un consommateur peut ajouter une septième table (H96, NEC adresse `0x04`,
+12 touches, pas de pavé numérique) : la carte mesure alors **184** scancodes.
+La table vit dans la couche consommatrice, pas ici ; la couche publique garde
+ses six tables et 172 scancodes.
+
+## 6. Réveil
+
+Le récepteur IR ne réveille pas la box sous le mainline : `sunxi-cir` coupe
+le bloc en suspend (`sunxi_ir_suspend()` → `sunxi_ir_hw_exit()`) et le DTS
+n'a pas `wakeup-source`. Le vendor utilise un faux arrêt (`box_start_os`) et
+l'ARISC pour garder l'IR vivant. U-Boot v2025.04 n'a pas de driver IR.
+
+Détail des trois chemins (IR, WoL Ethernet, WoWLAN), preuves et prochaines
+étapes : [`chantiers-reveil.md`](chantiers-reveil.md).

@@ -18,6 +18,8 @@ session or two, `L` more.
 | **P2/S** | 51, 52 (RX checksum flag, stable MAC on the Transpeed) | the driver still advertises a verification it does not perform, and a random MAC per boot defeats any DHCP reservation |
 | **P2/M** | 53 (defer instead of load order), 56 (BTF root cause, nixbian) | both turn a working port into a robust one, and both are latent for other boards |
 | **P2/L** | 58 (`brcmfmac` panic) — **closed 2026-11-16** by `045ad20` | the scan is measured 2.4/5 GHz; the panic was pre-`4219ece` |
+| **P2/M** | 61 (WoWLAN magic packet) | the driver and `s2idle` are there; the DTS lacks the hostwake — small board/PM fix |
+| **P3** | 60 (WoL Ethernet), 62 (IR wake / power-on) | both need a standby state plus a driver/DT feature; see `chantiers-reveil.md` |
 | **P3** | 3, 4, 10 (replay on the image + public audio doc), 12, 16, 17, 19, 21, 42 (`CONFIG_PSI`, costs a kernel), 44 (`mmc -110` / CMD0, optional), 45 (add-on icons), 46 (CEC kernel fix), 47 (WirePlumber abort: retest on 26.11, nothing to port), 54 (`sunxi-mdio` reads PHY ID 0), 55 (`dwmac-sun8i` in the example's `boot.kernelModules`), 57 (`CONFIG_KEXEC`), 59 (Transpeed PHY, blocked on a second unit), public diagnostics | deferred, or knowledge rather than code |
 | **closed** | 6, 9, 11, 23, 26, 30, 31, 33, 34, 37, 38, 39, 43 (governor), 46 (layer workaround), 48 (watchdog), 50 (kiosk console), D1 | done |
 
@@ -66,6 +68,9 @@ session or two, `L` more.
 | 57 | `CONFIG_KEXEC` absent | blocks kexec deployments | enable it in `extraConfig` |
 | 58 | `brcmfmac` panic when the radio starts | **closed on 2026-11-16** by `045ad20` (firmware/NVRAM/regdb in the board module, stable `wlan0`, `brcmfmac-wcc`, uncompressed firmware); `iw dev wlan0 scan` then measured 2.4/5 GHz. The panic itself was measured before `4219ece` | replay the scan on the bench; no code left |
 | 59 | Transpeed internal PHY (AC300) defective | decodes autonegotiation wrong (`LPA 0x4461` on a port that advertises 10/100/1000) and corrupts the RX payload; MAC, DMA and the driver RX path are proven sane by internal loopback | needs a second unit to separate unit fault from design |
+| 60 | WoL Ethernet (`sunxi-gmac`) | not implemented: `get_wol`/`set_wol` are TODO and `suspend` powers off the MAC/PHY | program PMT + keep the AC300 PHY/PWM5 alive in `s2idle`; see `chantiers-reveil.md` |
+| 61 | WoWLAN (AIC8800) | driver advertises magic packet and `s2idle` exists; the H96 `sdio_wifi` node lacks `hostwake` | add `hostwake`/`wakeup-source`, test `freeze` + magic packet |
+| 62 | IR wake / power-on | vendor uses fake shutdown/ARISC; `sunxi-cir` disables IR in suspend and U-Boot has no IR driver | extract the H96 vendor DTB, spike `sunxi-cir` wake + `freeze` |
 
 ## Public add-ons example
 
