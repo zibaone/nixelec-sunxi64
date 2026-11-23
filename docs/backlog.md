@@ -69,8 +69,8 @@ session or two, `L` more.
 | 58 | `brcmfmac` panic when the radio starts | **closed on 2026-11-16** by `045ad20` (firmware/NVRAM/regdb in the board module, stable `wlan0`, `brcmfmac-wcc`, uncompressed firmware); `iw dev wlan0 scan` then measured 2.4/5 GHz. The panic itself was measured before `4219ece` | replay the scan on the bench; no code left |
 | 59 | Transpeed internal PHY (AC300) defective | decodes autonegotiation wrong (`LPA 0x4461` on a port that advertises 10/100/1000) and corrupts the RX payload; MAC, DMA and the driver RX path are proven sane by internal loopback | needs a second unit to separate unit fault from design |
 | 60 | WoL Ethernet (`sunxi-gmac`) | not implemented: `get_wol`/`set_wol` are TODO and `suspend` powers off the MAC/PHY | program PMT + keep the AC300 PHY/PWM5 alive in `s2idle`; see `chantiers-reveil.md` |
-| 61 | WoWLAN (AIC8800) | driver advertises magic packet and `s2idle` exists; the H96 `sdio_wifi` node lacks `hostwake` | add `hostwake`/`wakeup-source`, test `freeze` + magic packet |
-| 62 | IR wake / power-on | vendor uses fake shutdown/ARISC; `sunxi-cir` disables IR in suspend and U-Boot has no IR driver | extract the H96 vendor DTB, spike `sunxi-cir` wake + `freeze` |
+| 61 | WoWLAN (AIC8800) | driver advertises magic packet and `s2idle` exists; the vendor DTS has `wlan_hostwake` PG15 + `wakeup-source`, our `sdio_wifi` lacks it | add `hostwake`/`wakeup-source`, test `freeze` + magic packet |
+| 62 | IR wake / power-on | H96 vendor FDT has `s_cir` wakeup + the H96 code (`0x08/0xfb04`); vendor boot0 has super-standby/ARISC; mainline `sunxi-cir` disables IR and U-Boot has no IR driver | spike `sunxi-cir` wake + `freeze` |
 
 ## Public add-ons example
 

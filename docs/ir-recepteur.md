@@ -153,8 +153,10 @@ ses six tables et 172 scancodes.
 
 Le récepteur IR ne réveille pas la box sous le mainline : `sunxi-cir` coupe
 le bloc en suspend (`sunxi_ir_suspend()` → `sunxi_ir_hw_exit()`) et le DTS
-n'a pas `wakeup-source`. Le vendor utilise un faux arrêt (`box_start_os`) et
-l'ARISC pour garder l'IR vivant. U-Boot v2025.04 n'a pas de driver IR.
+n'a pas `wakeup-source`. Le vendor utilise un super-standby : nœud
+`box_start_os` sur la Transpeed, logique boot0/ARISC sur la H96 (chaînes
+`super standby flag`, `set arisc reset`). U-Boot v2025.04 n'a pas de driver
+IR.
 
 Détail des trois chemins (IR, WoL Ethernet, WoWLAN), preuves et prochaines
 étapes : [`chantiers-reveil.md`](chantiers-reveil.md).

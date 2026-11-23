@@ -15,9 +15,10 @@ réellement hors tension**.
 
 Les trois reposent sur un **état de veille**, pas sur un poweroff complet :
 l'AXP1530 coupe les rails à l'extinction, donc ni IR, ni PHY, ni WiFi ne
-peuvent réveiller. Le vendor contourne par un faux arrêt (`box_start_os`) ;
-le mainline n'a que `s2idle` (`freeze`), qui garde la SoC et les périphériques
-nécessaires alimentés.
+peuvent réveiller. Le vendor contourne par un super-standby (nœud
+`box_start_os` sur la Transpeed, logique boot0/ARISC sur la H96) ; le mainline
+n'a que `s2idle` (`freeze`), qui garde la SoC et les périphériques nécessaires
+alimentés.
 
 ## 1. IR — le vendor fait un faux arrêt
 
@@ -44,18 +45,26 @@ Côté mainline :
   U-Boot n'est pas le bloqueur premier : il ne tourne pas quand la box est
   éteinte. Même un driver IR dans U-Boot ne démarrerait pas un PMIC coupé.
 
-**Détail mesuré** : la table vendor de la Transpeed ne contient pas le code
-`0x04/0x08` de la télécommande H96 (elle contient `0x4040/0x4d` pour la
-télécommande `multi`). Il faut le DTB vendor de la H96 pour savoir si elle y
-est ; sinon, même le firmware constructeur ne réveillerait pas la H96 avec
-cette télécommande. Les dumps `boot0.bin`/`boot1.bin` de l'archive vendor sont
-vides (4 Mio de zéros), donc le bootloader vendor n'est pas inspectable.
+**Détail mesuré (DTB vendor H96, relevé au banc)** : la table `s_cir` de la
+H96 contient `ir_power_key_code1 = <0x08>` / `ir_addr_code1 = <0xfb04>` —
+c'est exactement la touche POWER de la télécommande H96 (`0x04/0x08` en
+scancode mainline). Le vendor H96 sait donc réveiller la box avec cette
+télécommande. La table de la Transpeed a la même adresse mais la commande
+`0x1a` : elle ne couvre pas cette télécommande.
 
-**Prochaine étape** : extraire le DTB vendor H96 (table `s_cir`,
-`box_start_os`), puis, si la table ne couvre pas la télécommande, spike
-mainline : `wakeup-source` sur `&ir` + garder le bloc IR alimenté et
+Le **boot0 vendor H96** (dump de la tête eMMC) contient le chemin de veille :
+les chaînes `rtc standby flag`, `super standby flag`, `find standby flag, jump
+to addr`, `set arisc reset to assert/de-assert state`. Le FDT vendor H96 n'a
+pas de nœud `box_start_os` (contrairement à la Transpeed), mais le boot0/ARISC
+gère le super-standby et le `s_cir` est `wakeup-source`. Les dumps
+`boot0.bin`/`boot1.bin` de l'archive vendor sont vides ; c'est la tête eMMC de
+la H96 qui porte le vrai boot0.
+
+**Prochaine étape** : le vendor est identifié (table + boot0/ARISC) ; il reste
+le chemin mainline : `wakeup-source` sur `&ir`, garder le bloc IR alimenté et
 `enable_irq_wake()` dans `sunxi-cir`, tester `freeze` + une touche. C'est un
-rebuild noyau aarch64.
+rebuild noyau aarch64. Le faux arrêt vendor (super-standby/ARISC) est un
+chantier séparé, plus lourd ; il n'est pas nécessaire si `s2idle` suffit.
 
 ## 2. WoL Ethernet — le driver ne le fait pas
 
@@ -81,8 +90,11 @@ Mesuré sur la H96 le 2026-11-23 :
 - le driver AIC8800 a `aicbsp_sdio_suspend` avec « keep power while host
   suspended ».
 
-Le trou est dans le DTS de la H96 : le commentaire dit `hostwake = PG15`,
-mais le nœud `sdio_wifi` ne déclare que `reg = <1>`. Ajouter
+Le FDT vendor H96 a le nœud `wlan` (`allwinner,sunxi-wlan`) avec
+`wlan_regon = <&pio 6 18 ...>`, `wlan_hostwake = <&pio 6 15 ...>` et
+`wakeup-source` ; son log de boot dit `wlan_hostwake gpio=207 assert=1` et
+`wakeup source is enabled`. Notre DTS mainline (`sdio_wifi`) ne déclare que
+`reg = <1>` et le commentaire `hostwake = PG15` n'est pas repris. Ajouter
 `hostwake`/`wakeup-source` (ou vérifier que l'IRQ SDIO suffit) et tester :
 
 1. `iw phy0 wowlan enable magic-packet` ;
