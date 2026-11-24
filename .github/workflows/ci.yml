@@ -187,6 +187,7 @@ jobs:
           nix build "${override[@]}" -L \
             .#nixosConfigurations.orangepizero3-cache.config.system.build.toplevel \
             .#nixosConfigurations.h96-max-h618.config.system.build.toplevel \
+            .#nixosConfigurations.h96-max-h618-emmc.config.system.build.toplevel \
             .#nixosConfigurations.transpeed-8k618-t.config.system.build.toplevel \
             .#nixosConfigurations.orangepizero3.config.boot.kernelPackages.kernel.modules \
             .#nixosConfigurations.h96-max-h618.config.boot.kernelPackages.kernel.modules \
@@ -207,6 +208,7 @@ jobs:
           fi
           toplevel=$(nix path-info "${override[@]}" .#nixosConfigurations.orangepizero3-cache.config.system.build.toplevel)
           h96=$(nix path-info "${override[@]}" .#nixosConfigurations.h96-max-h618.config.system.build.toplevel)
+          h96_emmc=$(nix path-info "${override[@]}" .#nixosConfigurations.h96-max-h618-emmc.config.system.build.toplevel)
           transpeed=$(nix path-info "${override[@]}" .#nixosConfigurations.transpeed-8k618-t.config.system.build.toplevel)
           driver=$(nix path-info "${override[@]}" .#packages.aarch64-linux.uwe5622)
           gmac=$(nix path-info "${override[@]}" .#packages.aarch64-linux.sunxi-gmac)
@@ -218,6 +220,7 @@ jobs:
           # émulation — mesuré : 4 h de qemu pour un noyau déjà construit.
           kernel_modules=$(nix path-info "${override[@]}" .#nixosConfigurations.orangepizero3.config.boot.kernelPackages.kernel.modules)
           h96_modules=$(nix path-info "${override[@]}" .#nixosConfigurations.h96-max-h618.config.boot.kernelPackages.kernel.modules)
+          h96_kernel=$(nix path-info "${override[@]}" .#nixosConfigurations.h96-max-h618.config.boot.kernelPackages.kernel)
           # La Transpeed n'a AUCUN reseau sur sa generation installee (ni sunxi-gmac,
           # ni usbnet : le BTF du noyau est rejete). Sans ces deux chemins au cache,
           # la seule voie de test est un noyau recompile sous qemu, mesure a plus de 4 h.
@@ -231,14 +234,25 @@ jobs:
           # store (« is not valid »). Les autres entrées sortent de fermetures
           # déjà construites plus haut.
           uboot_netboot=$(nix build --no-link --print-out-paths "${override[@]}" .#packages.aarch64-linux.uboot-sunxi64-netboot)
-          cachix push "$CACHE" "$toplevel" "$h96" "$transpeed" "$driver" "$gmac" "$kernel_dev" \
-            "$kernel_modules" "$h96_modules" "$transpeed_modules" "$uboot_netboot"
-          for p in "$toplevel" "$h96" "$transpeed" "$driver" "$gmac" "$kernel_dev" \
-            "$kernel_modules" "$h96_modules" "$transpeed_modules" "$uboot_netboot"; do
+          cachix push "$CACHE" "$toplevel" "$h96" "$h96_emmc" "$transpeed" "$driver" "$gmac" "$kernel_dev" \
+            "$kernel_modules" "$h96_modules" "$h96_kernel" "$transpeed_modules" "$uboot_netboot"
+          for p in "$toplevel" "$h96" "$h96_emmc" "$transpeed" "$driver" "$gmac" "$kernel_dev" \
+            "$kernel_modules" "$h96_modules" "$h96_kernel" "$transpeed_modules" "$uboot_netboot"; do
             h=$(basename "$p" | cut -c1-32)
             code=$(curl -s -o /dev/null -w '%{http_code}' "https://${CACHE}.cachix.org/$h.narinfo")
             echo "$code  $(basename "$p")"
             test "$code" = "200"
+          done
+          # Le noyau et le toplevel H96 sont les sorties qu'un rebuild local
+          # sous qemu paie le plus cher. Les épingler évite qu'une éviction du
+          # cache partagé les fasse disparaître entre deux runs.
+          for p in "$h96_kernel" "$h96_modules" "$h96" "$h96_emmc" "$kernel_dev"; do
+            echo "pin $p"
+            curl -fsS -X POST \
+              -H "Authorization: Bearer $CACHIX_AUTH_TOKEN" \
+              -H 'Content-Type: application/json' \
+              -d "{\"name\":\"h96-front-panel\",\"storePath\":\"$p\",\"artifacts\":[]}" \
+              "https://app.cachix.org/api/v1/cache/${CACHE}/pin" >/dev/null
           done
 
   image:
