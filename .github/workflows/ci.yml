@@ -230,7 +230,7 @@ jobs:
           # aucune étape précédente, et `cachix push` refuse un chemin absent du
           # store (« is not valid »). Les autres entrées sortent de fermetures
           # déjà construites plus haut.
-          uboot_netboot=$(nix build --no-link --print-out-paths "${override[@]}" .#packages.aarch64-linux.uboot-h96-max-h618-netboot)
+          uboot_netboot=$(nix build --no-link --print-out-paths "${override[@]}" .#packages.aarch64-linux.uboot-sunxi64-netboot)
           cachix push "$CACHE" "$toplevel" "$h96" "$transpeed" "$driver" "$gmac" "$kernel_dev" \
             "$kernel_modules" "$h96_modules" "$transpeed_modules" "$uboot_netboot"
           for p in "$toplevel" "$h96" "$transpeed" "$driver" "$gmac" "$kernel_dev" \
