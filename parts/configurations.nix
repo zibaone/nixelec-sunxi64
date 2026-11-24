@@ -101,72 +101,14 @@
       self.nixosModules.h96-max-h618
       self.nixosModules.emmc-root
       self.nixosModules.mac-from-sid
-      # Afficheur facade : opt-in explicite ici, le module reste desactive par
-      # defaut. La H96 est la carte ou le cablage PI/PH a ete mesure et ou
-      # l'affichage a ete relu a l'ecran (docs/affichage-facade.md).
-      self.nixosModules.front-panel
+      # Afficheur facade : profil de carte (fd6xx + module commun), importe
+      # aussi par la composition HavenOS. Le contrat reste dans nixelec-common.
+      self.nixosModules.h96-max-h618-front-panel
       self.nixosModules.ir
       ../examples/h96-max-base.nix
       {
         nixelec.emmc.rootLabel = "nixelec-h96";
         nixelec.macFromSid.enable = true;
-        nixelec.frontPanel.enable = true;
-        nixelec.frontPanel.chip = "/dev/gpiochip1";
-        nixelec.frontPanel.clk = 226;
-        nixelec.frontPanel.dat = 227;
-        # `pushPull = true` depuis le 2026-11-19 : avec le noyau de famille,
-        # l'open-drain + pull-up interne ne ramene pas la ligne a l'etat haut
-        # (dalle eteinte alors que `fd6xx` sort 0) ; en push-pull l'ecran
-        # s'allume. La donnee de la H96 autonome etait restee en open-drain.
-        nixelec.frontPanel.pushPull = true;
-        nixelec.frontPanel.text = "H96";
-        # Profil mesure a l'ecran le 2026-11-23 : cinq grilles, octet
-        # d'icones 0x66 (commande 0x33 x 2). L'ordre des bits a ete releve
-        # un par un (1..7) : alarm, usb, pause, play, colon, lan, wifi.
-        nixelec.frontPanel.layout = {
-          digits = 5;
-          digitBase = 104; # 0x68
-          digitStride = 2;
-          icons = {
-            alarm = {
-              address = 102; # 0x66
-              mask = 1; # 0x01
-            };
-            usb = {
-              address = 102;
-              mask = 2; # 0x02
-            };
-            pause = {
-              address = 102;
-              mask = 4; # 0x04
-            };
-            play = {
-              address = 102;
-              mask = 8; # 0x08
-            };
-            colon = {
-              address = 102;
-              mask = 16; # 0x10
-            };
-            lan = {
-              address = 102;
-              mask = 32; # 0x20
-            };
-            wifi = {
-              address = 102;
-              mask = 64; # 0x40
-            };
-          };
-        };
-        nixelec.frontPanel.icons = [ ];
-        nixelec.frontPanel.status = {
-          enable = true;
-          ethernetIcon = "lan";
-          wifiIcon = "wifi";
-        };
-        # Horloge HH:MM : la colonne clignote, le service status est remplace
-        # par la boucle d'horloge (qui reprend les icones lan/wifi).
-        nixelec.frontPanel.clock.enable = true;
         # IR : le DTS de carte laisse `ir@7040000` en `disabled` (verifie sur
         # le DTB deploye), contrairement a la Transpeed, d'ou l'overlay.
         # Le module le fournit en `.dtbo` deja compile : avec un `dtsFile`,

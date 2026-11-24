@@ -282,6 +282,64 @@ in
     # casser un boot. Broches et protocole mesures : docs/affichage-facade.md.
     front-panel = inputs.nixelec-common.nixosModules.front-panel;
 
+    # Profil de dalle H96 Max H618, donnee de carte et non de flotte : la
+    # couche carte le fournit aux configurations qui l'importent (bring-up
+    # eMMC et composition kiosque). Le contrat fd6xx reste dans
+    # nixelec-common ; ce module ne fait que poser les valeurs mesurees.
+    h96-max-h618-front-panel = {
+      imports = [ inputs.nixelec-common.nixosModules.front-panel ];
+      nixelec.frontPanel = {
+        enable = true;
+        chip = "/dev/gpiochip1";
+        clk = 226;
+        dat = 227;
+        pushPull = true;
+        text = "H96";
+        layout = {
+          digits = 5;
+          digitBase = 104; # 0x68
+          digitStride = 2;
+          icons = {
+            alarm = {
+              address = 102; # 0x66
+              mask = 1; # 0x01
+            };
+            usb = {
+              address = 102;
+              mask = 2; # 0x02
+            };
+            pause = {
+              address = 102;
+              mask = 4; # 0x04
+            };
+            play = {
+              address = 102;
+              mask = 8; # 0x08
+            };
+            colon = {
+              address = 102;
+              mask = 16; # 0x10
+            };
+            lan = {
+              address = 102;
+              mask = 32; # 0x20
+            };
+            wifi = {
+              address = 102;
+              mask = 64; # 0x40
+            };
+          };
+        };
+        icons = [ ];
+        status = {
+          enable = true;
+          ethernetIcon = "lan";
+          wifiIcon = "wifi";
+        };
+        clock.enable = true;
+      };
+    };
+
     # IR : tables, fusion, gardes et keymap dans nixelec-common ; cette couche
     # apporte le recepteur sunxi-ir et l'overlay qui active ir@7040000.
     ir =
