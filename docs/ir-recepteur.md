@@ -136,7 +136,7 @@ Sur la carte, après déploiement :
 dmesg | grep -i sunxi-ir                 # « initialized sunXi IR driver »
 ls /sys/class/rc/                        # rcN + le device CEC s'il existe
 cat /sys/class/rc/rc0/protocols          # doit contenir [nec]
-ir-keytable -r | grep -c '^scancode'     # 172 dans la couche publique (six tables)
+ir-keytable -r | grep -c '^scancode'     # 173 dans la couche publique (six tables)
 systemctl status ir-keymap               # oneshot, sortie 0
 ```
 
@@ -145,9 +145,9 @@ Critère d'acceptation : le device dont `protocols` contient `nec` accepte
 arrive à Kodi — pas `systemctl is-active`.
 
 Un consommateur peut ajouter une septième table (H96, NEC adresse `0x04`,
-12 touches, pas de pavé numérique) : la carte mesure alors **184** scancodes.
+20 touches, pas de pavé numérique) : la carte mesure alors **193** scancodes.
 La table vit dans la couche consommatrice, pas ici ; la couche publique garde
-ses six tables et 172 scancodes.
+ses six tables et 173 scancodes.
 
 ## 6. Réveil
 
