@@ -304,6 +304,12 @@ in
         # au boot l'éteint (constaté après le switch) : on garde donc le
         # texte et l'horloge, seuls, jusqu'à mesure des masques.
         icons = [ ];
+        # Pas d'icônes d'état tant que les masques ne sont pas mesurés : les
+        # assertions du module exigent que les noms existent dans layout.icons.
+        status = {
+          ethernetIcon = null;
+          wifiIcon = null;
+        };
         clock = {
           enable = true;
           colonIcon = null;
@@ -333,6 +339,12 @@ in
         };
         # Aucune icône mesurée sur cette dalle non plus : ne pas écrire 0x66.
         icons = [ ];
+        # Pas d'icônes d'état tant que les masques ne sont pas mesurés : les
+        # assertions du module exigent que les noms existent dans layout.icons.
+        status = {
+          ethernetIcon = null;
+          wifiIcon = null;
+        };
         clock = {
           enable = true;
           colonIcon = null;
