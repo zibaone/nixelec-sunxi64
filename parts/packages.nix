@@ -7,8 +7,8 @@ let
   # mesuré qu'à 1 seconde, clé absente, la carte retombe sur l'Android de
   # l'eMMC en fastboot avant la première frappe, et on parle alors au mauvais
   # prompt.
-  mkNetbootUboot =
-    bootdelay:
+  mkBenchUboot =
+    { bootdelay, bootcommand }:
       let
         pkgsAarch64 = inputs.nixpkgs.legacyPackages.aarch64-linux;
         base = inputs.nixbian.packages.aarch64-linux.uboot-transpeed-8k618-t-edge;
@@ -58,7 +58,7 @@ let
             # (23 Mio) vers le haut de la RAM ; une copie de 211 Mio arrive
             # corrompue (« Initramfs unpacking failed »), mesuré en FEL. En
             # 64 bits, seul `~0` coupe la relocation.
-            CONFIG_BOOTCOMMAND="usb start; setenv initrd_high 0xffffffffffffffff; setenv fdt_high 0xffffffffffffffff; setenv boot_targets usb0 pxe; run distro_bootcmd"
+            CONFIG_BOOTCOMMAND="${bootcommand}"
             CONFIG_BOOTDELAY=${toString bootdelay}
 
             # Pilote GMAC vendor porté (EMAC1 + PHY AC300 en RMII).
@@ -146,8 +146,24 @@ in
       # Une seule image netboot pour TOUTE la famille sunxi64 : elle balaie le
       # MDIO, n'applique les quirks AC300 que si la PHY en est une, et rend
       # -ENODEV sinon pour laisser U-Boot passer au dongle USB-Ethernet.
-      packages.uboot-sunxi64-netboot = mkNetbootUboot 1;
-      packages.uboot-sunxi64-diag = mkNetbootUboot 20;
+      packages.uboot-sunxi64-netboot = mkBenchUboot {
+        bootdelay = 1;
+        bootcommand = "usb start; setenv initrd_high 0xffffffffffffffff; setenv fdt_high 0xffffffffffffffff; setenv boot_targets usb0 pxe; run distro_bootcmd";
+      };
+      packages.uboot-sunxi64-diag = mkBenchUboot {
+        bootdelay = 20;
+        bootcommand = "usb start; setenv initrd_high 0xffffffffffffffff; setenv fdt_high 0xffffffffffffffff; setenv boot_targets usb0 pxe; run distro_bootcmd";
+      };
+      # Variante « ums » : le `bootcmd` EST la mise en stockage de masse. Un
+      # seul `sunxi-fel -p uboot <image>` pendant le MaskROM et l'eMMC de la
+      # carte apparaît en `/dev/sdX` sur le poste — sans console série, sans
+      # clé, sans réseau. Sert à installer et à débriquer quand le lien UART
+      # du banc est intermittent (mesuré le 2026-11-25 : bursts de 1 Kio
+      # perdus, 60 octets passent).
+      packages.uboot-sunxi64-ums = mkBenchUboot {
+        bootdelay = 0;
+        bootcommand = "ums 0 mmc 1";
+      };
 
     };
 }
