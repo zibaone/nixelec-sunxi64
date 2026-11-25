@@ -70,23 +70,14 @@
       self.nixosModules.wifi-client
       self.nixosModules.emmc-root
       self.nixosModules.mac-from-sid
-      # Afficheur facade : meme puce 2 fils que la H96, mais deux differences
-      # mesurees a l'ecran le 2026-11-16 — la carte n'a pas de pull-up (il faut
-      # pousser les lignes en sortie franche) et l'adresse 0x68 porte le
-      # chiffre de gauche, pas de droite.
-      self.nixosModules.front-panel
+      # Afficheur facade : profil de carte (fd6xx + module commun), avec
+      # les valeurs Transpeed. Le contrat reste dans nixelec-common.
+      self.nixosModules.transpeed-8k618-t-front-panel
       self.nixosModules.ir
       ../examples/transpeed-base.nix
       {
         nixelec.emmc.rootLabel = "nixelec-8k618";
         nixelec.macFromSid.enable = true;
-        nixelec.frontPanel.enable = true;
-        nixelec.frontPanel.chip = "/dev/gpiochip1";
-        nixelec.frontPanel.clk = 267;
-        nixelec.frontPanel.dat = 268;
-        nixelec.frontPanel.pushPull = true;
-        nixelec.frontPanel.leftToRight = true;
-        nixelec.frontPanel.text = "8618";
         # IR : le DTS mainline de la carte active deja `ir@7040000` (verifie :
         # rc0 = sunxi-ir au boot), donc pas d'overlay. `remotes` vide = toutes
         # les tables du module ; deposer un .toml suffit a en ajouter une.

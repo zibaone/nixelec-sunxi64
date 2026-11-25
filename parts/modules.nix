@@ -299,44 +299,44 @@ in
           digits = 5;
           digitBase = 104; # 0x68
           digitStride = 2;
-          icons = {
-            alarm = {
-              address = 102; # 0x66
-              mask = 1; # 0x01
-            };
-            usb = {
-              address = 102;
-              mask = 2; # 0x02
-            };
-            pause = {
-              address = 102;
-              mask = 4; # 0x04
-            };
-            play = {
-              address = 102;
-              mask = 8; # 0x08
-            };
-            colon = {
-              address = 102;
-              mask = 16; # 0x10
-            };
-            lan = {
-              address = 102;
-              mask = 32; # 0x20
-            };
-            wifi = {
-              address = 102;
-              mask = 64; # 0x40
-            };
-          };
         };
+        # Aucune icône n'est mesurée sur cette dalle. Écrire l'octet 0x66
+        # au boot l'éteint (constaté après le switch) : on garde donc le
+        # texte et l'horloge, seuls, jusqu'à mesure des masques.
         icons = [ ];
-        status = {
+        clock = {
           enable = true;
-          ethernetIcon = "lan";
-          wifiIcon = "wifi";
+          colonIcon = null;
         };
-        clock.enable = true;
+      };
+    };
+
+    # Profil de dalle Transpeed 8K618-T : même protocole 2 fils que la H96,
+    # mais 4 positions, adresse 0x68 à gauche et pas de pull-up interne.
+    # La colonne et les icônes viennent de la table vendor ; seuls les
+    # chiffres et l'horloge sont utilisés au boot, les icônes restant à
+    # mesurer sur cette dalle.
+    transpeed-8k618-t-front-panel = {
+      imports = [ inputs.nixelec-common.nixosModules.front-panel ];
+      nixelec.frontPanel = {
+        enable = true;
+        chip = "/dev/gpiochip1";
+        clk = 267;
+        dat = 268;
+        pushPull = true;
+        leftToRight = true;
+        text = "8618";
+        layout = {
+          digits = 4;
+          digitBase = 104; # 0x68
+          digitStride = 2;
+        };
+        # Aucune icône mesurée sur cette dalle non plus : ne pas écrire 0x66.
+        icons = [ ];
+        clock = {
+          enable = true;
+          colonIcon = null;
+        };
       };
     };
 
