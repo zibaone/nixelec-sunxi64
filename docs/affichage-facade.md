@@ -394,10 +394,13 @@ apres un demarrage a froid (`/persist/panel-probe.log`), **aucun regulateur ne
 change d'etat** (ni `vcc-3v3-io-mmc`, qui alimente `pinctrl-vcc-pi`, ni
 `vcc-5v`), les broches 267/268 restent `UNCLAIMED`, l'horloge `apb1` du
 controleur PIO est active (100 MHz, `Y`) et il n'y a pas de runtime PM.
-Conclusion : la dalle (ou sa nappe) est **partiellement defaillante** sur cette
-unite ; ce n'est pas un probleme de protocole. Le profil reste l'heure seule,
-`burst` reste l'outil de sondage, et rien de tout cela ne doit etre recopie sur
-la H96.
+Conclusion : **la cause reste inexpliquee**. Le protocole, le cablage logiciel
+et le noyau sont hors de cause, mais la dalle **n'est pas reputee cassee** —
+elle a affiche correctement et doit etre remise en service. Le profil reste
+l'heure seule et `burst` reste l'outil de sondage ; rien de tout cela ne doit
+etre recopie sur la H96. `clock.enable = false` n'est qu'un **provisoire** :
+a retablir des que la cause sera trouvee (voir la section 8 pour ce qui est
+deja ecarte et ne doit pas etre re-mesure).
 
 La consequence pratique est importante : l'octet d'icones n'est **pas** une
 grille de chiffre. La disposition des commandes FD650/FD655 le donne :

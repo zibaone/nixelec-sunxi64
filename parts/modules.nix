@@ -376,10 +376,11 @@ in
         # 2026-11-26, les huit bits de 0x66, puis 0x7f, puis le point décimal
         # des quatre positions, puis les bits de 0x70 et 0x72 n'ont rien
         # produit à l'écran. Le mode bloc du vendor (`0x40` puis `0xC0|addr`)
-        # est désormais dans `fd6xx burst` et n'a rien changé non plus : sur
-        # cette unité la dalle n'accepte des trames que ~2 min après un cycle
-        # secteur, puis plus rien (mesure 2026-11-26, `docs/affichage-facade.md`
-        # §8). Elle est donc partiellement défaillante, pas mal pilotée.
+        # est désormais dans `fd6xx burst` et n'a rien changé non plus : la
+        # dalle n'accepte des trames que ~2 min après un cycle secteur, puis
+        # plus rien (mesure 2026-11-26, `docs/affichage-facade.md` §8). La
+        # cause reste inexpliquée — la dalle n'est pas cassée, tout ce qui suit
+        # devra être rétabli.
         icons = [ ];
         # Pas d'icônes d'état tant que les masques ne sont pas mesurés : les
         # assertions du module exigent que les noms existent dans layout.icons.
@@ -387,10 +388,11 @@ in
           ethernetIcon = null;
           wifiIcon = null;
         };
-        # Horloge coupée : la dalle n'affiche plus que des trames isolées,
-        # donc une heure qui se fige à celle du boot est pire qu'une dalle
-        # éteinte, et la boucle de 1 s réécrit dans le vide. Repasser à true
-        # si la nappe est remplacée.
+        # Horloge coupée À TITRE PROVISOIRE : la dalle n'affiche plus que des
+        # trames isolées, donc une heure figée à celle du boot est pire qu'une
+        # dalle éteinte, et la boucle de 1 s réécrit dans le vide. À RÉTABLIR
+        # (clock.enable = true, colonIcon = "colon" une fois la colonne
+        # mesurée) dès que la cause du silence sera trouvée.
         clock = {
           enable = false;
           colonIcon = null;
