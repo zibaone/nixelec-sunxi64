@@ -375,17 +375,29 @@ retirer les icones du profil ; un bit isole s'ecrit normalement. Corollaire
 pour `show` : il efface les icones connues une par une (`--clear ADDR:MASK`),
 jamais par une ecriture globale.
 
-**La Transpeed n'obéit pas au même mode d'écriture (mesure du 2026-11-26).** Les
-huit bits de `0x66` allumes un par un, puis `0x7f`, puis le point decimal de
-chacune des quatre positions, puis les huit bits de `0x70` et de `0x72` ne
-produisent **rien** a l'ecran — alors que les chiffres obeissent normalement en
-ecriture par adresse. Le vendor, lui, ecrit `data[0]` (masque des six LEDs,
-`LED_DOT_SEC` = `0x10`) **dans un bloc de cinq octets** avec les quatre
-chiffres, en une seule transaction (`aml_fd628.c`, mode incremental) : c'est
-comme cela que `88:88` apparait sous Android. Notre outil n'a pas ce mode.
-Tant qu'il ne l'a pas, le profil de la Transpeed reste l'heure seule :
-`icons = [ ]`, `status` a `null`, `clock.colonIcon = null`. Ne pas recopier le
-profil H96 sur cette carte.
+**La Transpeed ne repond plus que par intermittence (mesure du 2026-11-26).**
+Le profil logiciel et les broches sont ceux du 2026-11-16, quand `8618`
+s'affichait correctement ; or ce jour-la la meme configuration donne :
+
+- apres un **cycle secteur** : la dalle prend `1111` puis `2222` (lue `2221`,
+  un chiffre en retard) pendant les ~2 premieres minutes, puis n'accepte plus
+  rien — ni `write`, ni `test`, ni les huit bits de `0x66`, ni `0x7f`, ni les
+  points decimaux, ni `0x70`/`0x72`, ni le mode bloc (`burst`, sequence du
+  vendor `0x40` puis `0xC0|addr`) ;
+- au cycle secteur suivant : dalle **noire**, puis un `test` (tous segments)
+  n'allume **qu'un seul chiffre**, un « 6 », a toutes les vitesses essayees
+  (100 kHz, 2,5 kHz, 1 kHz, 500 Hz) ;
+- un `systemctl reboot` ne change rien : c'est le **secteur** qu'il faut couper.
+
+Aucune cause cote noyau : sur 42 instantanes pris toutes les 5 s pendant 4 min
+apres un demarrage a froid (`/persist/panel-probe.log`), **aucun regulateur ne
+change d'etat** (ni `vcc-3v3-io-mmc`, qui alimente `pinctrl-vcc-pi`, ni
+`vcc-5v`), les broches 267/268 restent `UNCLAIMED`, l'horloge `apb1` du
+controleur PIO est active (100 MHz, `Y`) et il n'y a pas de runtime PM.
+Conclusion : la dalle (ou sa nappe) est **partiellement defaillante** sur cette
+unite ; ce n'est pas un probleme de protocole. Le profil reste l'heure seule,
+`burst` reste l'outil de sondage, et rien de tout cela ne doit etre recopie sur
+la H96.
 
 La consequence pratique est importante : l'octet d'icones n'est **pas** une
 grille de chiffre. La disposition des commandes FD650/FD655 le donne :
