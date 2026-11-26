@@ -336,25 +336,44 @@ de daemon) qui lit `/sys/class/net/<if>/operstate` pour Ethernet et
 `iw dev <if> link` pour le WiFi, puis reecrit l'etat complet. Le timer couvre
 aussi la fenetre ou le bring-up video reinitialise le banc PIO.
 
-## 8. H96 : colonne et icone USB, bits a mesurer
+## 8. H96 : sept icones mesurees sur `0x66`
 
 Constat visuel de l'utilisateur (2026-11-23) : **la H96 a une colonne (`:`) et
-une icone `usb`, peut-etre une autre au-dessus**. Ce n'est donc pas une dalle
-purement chiffres : elle a une rangee d'icones, meme si le DTS vendor ne
-declare que `leds_clk`/`leds_dat` et aucune table d'icones.
+des icones** (`usb`, `alarm`, `play`, `pause`, `lan`, `wifi`). Ce n'est donc pas
+une dalle purement chiffres, meme si le DTS vendor ne declare que
+`leds_clk`/`leds_dat` et aucune table d'icones.
 
-Deux sources independantes donnent le meme ordre **partiel** des bits, sans
-avoir ete mesurees sur cette carte :
+Deux sources independantes donnaient le meme ordre **partiel** des bits, sans
+avoir ete mesurees sur cette carte : le driver tiers `leds-fd6551` (`clock` bit
+0, `usb` 1, `pause` 2, `play` 3, `colon` 4, `net` 5, `wifi` 6, en precisant
+lui-meme qu'il faut experimenter) et la table vendor de la Transpeed
+(`alarm` 0x01, `usb` 0x02, `play` 0x04, `pause` 0x08, `colon` 0x10, `eth`
+0x20, `wifi` 0x40). Elles concordaient sur `usb` = 0x02 et `colon` = 0x10 et
+divergeaient sur play/pause : c'etait une hypothese de depart.
 
-- le driver tiers `leds-fd6551` documente un jeu par defaut `clock` bit 0,
-  `usb` bit 1, `pause` bit 2, `play` bit 3, `colon` bit 4, `net` bit 5,
-  `wifi` bit 6 — en precisant lui-meme qu'il faut experimenter ;
-- la table vendor de la Transpeed donne `alarm` 0x01, `usb` 0x02, `play` 0x04,
-  `pause` 0x08, `colon` 0x10, `eth` 0x20, `wifi` 0x40.
+**Mesure du 2026-11-23, bit par bit sur la H96 (`fd6xx ... scan --addr 0x66`),
+ordre confirme a l'ecran :**
 
-Les deux concordent sur `usb` = bit 1 (0x02) et `colon` = bit 4 (0x10) ; elles
-divergent sur l'ordre play/pause. C'est une **hypothese de depart** pour la
-mesure, pas un profil.
+| Bit | Masque | Icône |
+|---|---|---|
+| 0 | `0x01` | `alarm` |
+| 1 | `0x02` | `usb` |
+| 2 | `0x04` | `pause` |
+| 3 | `0x08` | `play` |
+| 4 | `0x10` | `colon` |
+| 5 | `0x20` | `lan` |
+| 6 | `0x40` | `wifi` |
+
+Toutes sur l'adresse **102 (`0x66`)**. Controle du 2026-11-25 sur la H96 #2 :
+`--bit 102:16` allume le « : », `--clear 102:16` l'eteint, `--bit 102:32`
+allume `lan` — les chiffres ne bougent pas.
+
+**Ne jamais ecrire `0x7f` (ni `0xff`) sur `0x66` :** la valeur qui porte les
+sept bits a la fois **eteint la dalle**. C'est ce qui a fait croire, le
+2026-11-25 au matin, que « l'ecriture de `0x66` eteint l'ecran » et fait
+retirer les icones du profil ; un bit isole s'ecrit normalement. Corollaire
+pour `show` : il efface les icones connues une par une (`--clear ADDR:MASK`),
+jamais par une ecriture globale.
 
 La consequence pratique est importante : l'octet d'icones n'est **pas** une
 grille de chiffre. La disposition des commandes FD650/FD655 le donne :
@@ -376,10 +395,12 @@ adresses mesurees sur nos deux dalles (`0x48`, `0x68`..`0x70`) coincident :
 vendor Transpeed : son `write_buffer[0]` (masque d'icones) est ecrit juste
 avant les quatre chiffres.
 
-Consequence pour le service actuel : `write`/`blank` ecrivent `0x68`..`0x70`
-et **ne touchent jamais `0x66`**. La colonne et l'USB ne sont donc ni allumes
-ni eteints par le boot ; ils restent dans l'etat laisse par le firmware
-precedent. C'est pour cela qu'ils n'apparaissent pas dans nos mesures.
+Consequence pour le service : `write`/`blank` n'ecrivent que `0x68`..`0x70` et
+**ne touchent jamais `0x66`** ; c'est `show` qui porte les icones, une par une
+(`--bit ADDR:MASK` / `--clear ADDR:MASK`). Le profil de la H96 pose donc les
+sept icones dans `layout.icons` et laisse `icons = [ ]` : rien d'allume en
+permanence, ce sont `status` (lan/wifi d'apres `operstate` et `iw link`) et
+`clock.colonIcon` (le « : » une seconde sur deux) qui pilotent l'octet.
 
 Procedure de mesure :
 
