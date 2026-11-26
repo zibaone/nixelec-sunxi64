@@ -1,0 +1,61 @@
+From: zibao <zibao@proton.me>
+Subject: [PATCH] watchdog: core: ignore user keepalives while suspended
+
+The core PM notifier pings the watchdog for the last time on
+PM_SUSPEND_PREPARE and then cancels the keepalive hrtimer and worker.  A
+userspace keepalive (WDIOC_KEEPALIVE) that reaches the driver just after
+that cancellation re-arms the pretimeout hrtimer: the hrtimer then fires
+in the middle of s2idle and panics the kernel.
+
+Measured on a H96 Max H618 (sunxi-wdt, s2idle, systemd RuntimeWatchdogSec
+15 s): a 60 s sleep armed with rtcwake panics with "watchdog pretimeout
+event" even though the driver stopped the counter before the dpm phase.
+With the userspace watchdog closed (no keepalives), the same sleep resumes
+cleanly.
+
+Mark the watchdog as suspended once the suspend ping succeeded, and ignore
+userspace keepalives until the resume, so the pretimeout hrtimer stays
+cancelled for the whole sleep.
+
+Signed-off-by: zibao <zibao@proton.me>
+
+--- a/drivers/watchdog/watchdog_core.h
++++ b/drivers/watchdog/watchdog_core.h
+@@ -60,6 +60,7 @@
+ #define _WDOG_DEV_OPEN		0	/* Opened ? */
+ #define _WDOG_ALLOW_RELEASE	1	/* Did we receive the magic char ? */
+ #define _WDOG_KEEPALIVE		2	/* Did we receive a keepalive ? */
++#define _WDOG_SUSPENDED		3	/* Suspended ? */
+ };
+ 
+ /*
+--- a/drivers/watchdog/watchdog_dev.c
++++ b/drivers/watchdog/watchdog_dev.c
+@@ -195,6 +195,9 @@
+ 	if (!watchdog_hw_running(wdd))
+ 		return 0;
+ 
++	if (test_bit(_WDOG_SUSPENDED, &wd_data->status))
++		return 0;
++
+ 	set_bit(_WDOG_KEEPALIVE, &wd_data->status);
+ 
+ 	wd_data->last_keepalive = ktime_get();
+@@ -1276,6 +1279,8 @@
+ 	mutex_lock(&wd_data->lock);
+ 	if (watchdog_worker_should_ping(wd_data))
+ 		ret = __watchdog_ping(wd_data->wdd);
++	if (!ret)
++		set_bit(_WDOG_SUSPENDED, &wd_data->status);
+ 	mutex_unlock(&wd_data->lock);
+ 
+ 	if (ret)
+@@ -1299,6 +1304,8 @@
+ 	if (!wdd->wd_data)
+ 		return -ENODEV;
+ 
++	clear_bit(_WDOG_SUSPENDED, &wd_data->status);
++
+ 	/*
+ 	 * __watchdog_ping will also retrigger hrtimer and therefore restore the
+ 	 * ping worker if needed.
