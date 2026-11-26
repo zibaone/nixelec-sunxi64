@@ -372,10 +372,13 @@ in
           digitBase = 104; # 0x68
           digitStride = 2;
         };
-        # Aucune icône mesurée sur cette dalle : le 2026-11-26, les huit bits
-        # de l'octet 0x66 puis le point décimal de chacune des quatre
-        # positions ont été allumés un par un, sans qu'aucun ne produise quoi
-        # que ce soit à l'écran. Elle affiche l'heure, et rien d'autre.
+        # Aucune icône n'obéit à l'écriture par adresse sur cette dalle : le
+        # 2026-11-26, les huit bits de 0x66, puis 0x7f, puis le point décimal
+        # des quatre positions, puis les bits de 0x70 et 0x72 n'ont rien
+        # produit à l'écran, alors que les chiffres répondent. Le vendor écrit
+        # le masque d'icônes en tête d'un bloc de cinq octets avec les quatre
+        # chiffres (`aml_fd628.c`, mode incrémental) : c'est le mode que
+        # `fd6xx` n'a pas encore. En attendant, heure seule et rien d'autre.
         icons = [ ];
         # Pas d'icônes d'état tant que les masques ne sont pas mesurés : les
         # assertions du module exigent que les noms existent dans layout.icons.

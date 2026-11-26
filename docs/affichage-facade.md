@@ -375,11 +375,17 @@ retirer les icones du profil ; un bit isole s'ecrit normalement. Corollaire
 pour `show` : il efface les icones connues une par une (`--clear ADDR:MASK`),
 jamais par une ecriture globale.
 
-**La Transpeed n'a rien de tout cela (mesure du 2026-11-26).** Les huit bits de
-`0x66` allumes un par un puis le point decimal de chacune des quatre positions
-(`raw 104|106|108|110 0x80`) ne produisent rien a l'ecran. Son profil reste
-donc l'heure seule : `icons = [ ]`, `status` a `null`, `clock.colonIcon =
-null`. Ne pas recopier le profil H96 sur cette carte.
+**La Transpeed n'obéit pas au même mode d'écriture (mesure du 2026-11-26).** Les
+huit bits de `0x66` allumes un par un, puis `0x7f`, puis le point decimal de
+chacune des quatre positions, puis les huit bits de `0x70` et de `0x72` ne
+produisent **rien** a l'ecran — alors que les chiffres obeissent normalement en
+ecriture par adresse. Le vendor, lui, ecrit `data[0]` (masque des six LEDs,
+`LED_DOT_SEC` = `0x10`) **dans un bloc de cinq octets** avec les quatre
+chiffres, en une seule transaction (`aml_fd628.c`, mode incremental) : c'est
+comme cela que `88:88` apparait sous Android. Notre outil n'a pas ce mode.
+Tant qu'il ne l'a pas, le profil de la Transpeed reste l'heure seule :
+`icons = [ ]`, `status` a `null`, `clock.colonIcon = null`. Ne pas recopier le
+profil H96 sur cette carte.
 
 La consequence pratique est importante : l'octet d'icones n'est **pas** une
 grille de chiffre. La disposition des commandes FD650/FD655 le donne :
