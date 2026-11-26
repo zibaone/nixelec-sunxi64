@@ -6,19 +6,17 @@ counting while the system is in s2idle, while the only task pinging it is
 userspace, which is frozen for the whole sleep.  The board is therefore
 reset in the middle of the sleep instead of resuming it.
 
-watchdog_dev_suspend(), the core PM notifier, is not enough on its own: it
-pings once on PM_SUSPEND_PREPARE and cancels the ping worker, but it never
-stops the hardware.  Set WDOG_NO_PING_ON_SUSPEND so the core coordinates
-the sleep, and stop/start the counter from a driver PM notifier.
+The counter is stopped/restarted from a driver PM notifier rather than
+from ->suspend()/->resume(): on a H96 Max H618 (H618, 16 s timeout,
+s2idle) stopping it from ->suspend() was measured to break the RTC alarm
+wake-up, while stopping it before the dpm phase resumed cleanly.
 
-Stopping the counter from the driver's ->suspend() was measured to break
-the RTC alarm wake-up: on a H96 Max H618 (H618, 16 s timeout, s2idle) with
-the counter stopped from ->suspend(), a 60 s sleep armed with rtcwake
-never resumed, while the same sleep resumed cleanly when the counter was
-stopped before the dpm phase (watchdog closed by systemd).  The RTC alarm
-is the only wake source here, so the notifier runs at PM_SUSPEND_PREPARE,
-before the device suspend phase, and restarts the counter on
-PM_POST_SUSPEND.
+WDOG_NO_PING_ON_SUSPEND must be set before watchdog registration, so the
+core registers its own PM notifier: it pings once and cancels the
+keepalive/pretimeout hrtimer.  A first version set the bit after
+registration; the core notifier was never registered and the pretimeout
+hrtimer panicked the kernel in the middle of s2idle ("watchdog pretimeout
+event").
 
 Signed-off-by: zibao <zibao@proton.me>
 
@@ -72,21 +70,28 @@ Signed-off-by: zibao <zibao@proton.me>
  static const struct watchdog_info sunxi_wdt_info = {
  	.identity	= DRV_NAME,
  	.options	= WDIOF_SETTIMEOUT |
-@@ -293,6 +320,26 @@
- 	if (unlikely(err))
- 		return err;
+@@ -286,6 +313,17 @@
+ 
+ 	watchdog_set_drvdata(&sunxi_wdt->wdt_dev, sunxi_wdt);
  
 +	/*
 +	 * The counter is clocked from the always-on domain and cannot be
-+	 * serviced while the system is suspended.  The core pings it once on
-+	 * PM_SUSPEND_PREPARE (WDOG_NO_PING_ON_SUSPEND) and cancels its worker;
-+	 * stop the counter from a PM notifier so it is off before the dpm
-+	 * phase.  Stopping it from ->suspend() was measured to break the RTC
-+	 * alarm wake-up on s2idle (H96 Max H618), while stopping it before the
-+	 * dpm phase resumes cleanly.
++	 * serviced while the system is suspended.  The bit must be set
++	 * before watchdog registration: the core registers its PM notifier
++	 * (which pings once and cancels the keepalive/pretimeout hrtimer)
++	 * only when it is set at that point.  The driver notifier stops the
++	 * counter before the dpm phase; stopping it from ->suspend() was
++	 * measured to break the RTC alarm wake-up on s2idle (H96 Max H618).
 +	 */
 +	set_bit(WDOG_NO_PING_ON_SUSPEND, &sunxi_wdt->wdt_dev.status);
 +
+ 	sunxi_wdt_stop(&sunxi_wdt->wdt_dev);
+ 
+ 	watchdog_stop_on_reboot(&sunxi_wdt->wdt_dev);
+@@ -293,6 +331,15 @@
+ 	if (unlikely(err))
+ 		return err;
+ 
 +	sunxi_wdt->pm_notifier.notifier_call = sunxi_wdt_pm_notify;
 +	err = register_pm_notifier(&sunxi_wdt->pm_notifier);
 +	if (err)
