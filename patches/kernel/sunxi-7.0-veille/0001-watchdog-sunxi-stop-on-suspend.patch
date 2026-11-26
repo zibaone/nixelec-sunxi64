@@ -1,0 +1,79 @@
+From: zibao <zibao@proton.me>
+Subject: [PATCH] watchdog: sunxi: stop the counter across system sleep
+
+The sunxi watchdog counter is clocked from the always-on domain: it keeps
+counting while the system is in s2idle, while the only task pinging it is
+userspace, which is frozen for the whole sleep.  The board is therefore
+reset in the middle of the sleep instead of resuming it.
+
+watchdog_dev_suspend(), the core PM notifier, is not enough on its own: it
+pings once on PM_SUSPEND_PREPARE and cancels the ping worker, but it never
+stops the hardware.  The driver has to stop the counter, and restart it on
+resume.
+
+Set WDOG_NO_PING_ON_SUSPEND so the core coordinates the sleep, store the
+driver data (probe never called platform_set_drvdata()), and add PM ops
+that call sunxi_wdt_stop()/sunxi_wdt_start() around the sleep.  The ops
+only act when the watchdog is active, i.e. opened by userspace.
+
+Measured on a H96 Max H618 (H618, 16 s timeout, s2idle) on 2026-11-26:
+a 90 s sleep reset the board after 16 s, while an 8 s sleep resumed
+cleanly.  With this change the counter is disabled for the whole sleep
+and reprogrammed with the same timeout on resume.
+
+Signed-off-by: zibao <zibao@proton.me>
+
+--- a/drivers/watchdog/sunxi_wdt.c
++++ b/drivers/watchdog/sunxi_wdt.c
+@@ -192,6 +192,28 @@
+ 	return 0;
+ }
+ 
++static int __maybe_unused sunxi_wdt_suspend(struct device *dev)
++{
++	struct sunxi_wdt_dev *sunxi_wdt = dev_get_drvdata(dev);
++
++	if (watchdog_active(&sunxi_wdt->wdt_dev))
++		sunxi_wdt_stop(&sunxi_wdt->wdt_dev);
++
++	return 0;
++}
++
++static int __maybe_unused sunxi_wdt_resume(struct device *dev)
++{
++	struct sunxi_wdt_dev *sunxi_wdt = dev_get_drvdata(dev);
++
++	if (watchdog_active(&sunxi_wdt->wdt_dev))
++		sunxi_wdt_start(&sunxi_wdt->wdt_dev);
++
++	return 0;
++}
++
++static SIMPLE_DEV_PM_OPS(sunxi_wdt_pm_ops, sunxi_wdt_suspend, sunxi_wdt_resume);
++
+ static const struct watchdog_info sunxi_wdt_info = {
+ 	.identity	= DRV_NAME,
+ 	.options	= WDIOF_SETTIMEOUT |
+@@ -286,6 +308,14 @@
+ 
+ 	watchdog_set_drvdata(&sunxi_wdt->wdt_dev, sunxi_wdt);
+ 
++	/*
++	 * The counter is clocked from the always-on domain and cannot be
++	 * serviced while the system is suspended.  Let the core stop its ping
++	 * worker before the sleep, and stop the counter itself in ->suspend().
++	 */
++	set_bit(WDOG_NO_PING_ON_SUSPEND, &sunxi_wdt->wdt_dev.status);
++	platform_set_drvdata(pdev, sunxi_wdt);
++
+ 	sunxi_wdt_stop(&sunxi_wdt->wdt_dev);
+ 
+ 	watchdog_stop_on_reboot(&sunxi_wdt->wdt_dev);
+@@ -304,6 +334,7 @@
+ 	.driver		= {
+ 		.name		= DRV_NAME,
+ 		.of_match_table	= sunxi_wdt_dt_ids,
++		.pm		= &sunxi_wdt_pm_ops,
+ 	},
+ };
+ 

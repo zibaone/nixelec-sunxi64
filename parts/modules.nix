@@ -64,6 +64,9 @@ let
             # Apres h96-max : son 0001 modifie la dtsi H96 que ce dernier cree.
             "sunxi-7.0-board-audio"
             "sunxi-7.0-aic8800-kbuild"
+            # Veille : watchdog et reveil IR, independants des series
+            # precedentes ; en dernier pour ne pas decaler leurs hunks.
+            "sunxi-7.0-veille"
           ];
 
       # Ordre mesuré : DTS Transpeed (0002 puis 0004), VP9 avant les fences

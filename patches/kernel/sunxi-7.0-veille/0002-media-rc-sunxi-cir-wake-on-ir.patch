@@ -1,0 +1,64 @@
+From: zibao <zibaone@proton.me>
+Subject: [PATCH] media: rc: sunxi-cir: keep the receiver alive for wakeup
+
+The driver has no wakeup support: sunxi_ir_suspend() always calls
+sunxi_ir_hw_exit(), which gates the apb and ir clocks and asserts the
+reset, so no frame can be decoded once the system is suspended.
+
+The IR block of the H616 is clocked from r_ccu (CLK_R_APB1_IR, CLK_IR,
+RST_R_APB1_IR, at 0x07040000), in the always-on part of the SoC, so it
+can be left running: enable wakeup on the device, arm the interrupt
+as a wake source in suspend and skip sunxi_ir_hw_exit(); in resume,
+only disarm the wake source, since the block was never cut.
+
+device_may_wakeup() still follows the power/wakeup attribute, so a user
+that disables wakeup keeps the previous behaviour: clocks gated and
+reset asserted in suspend, sunxi_ir_hw_init() in resume.
+
+Signed-off-by: zibao <zibaone@proton.me>
+
+--- a/drivers/media/rc/sunxi-cir.c
++++ b/drivers/media/rc/sunxi-cir.c
+@@ -238,6 +238,18 @@ static int __maybe_unused sunxi_ir_suspe
+ 
+ static int __maybe_unused sunxi_ir_suspend(struct device *dev)
+ {
++	struct sunxi_ir *ir = dev_get_drvdata(dev);
++
++	/*
++	 * The receiver is clocked from r_ccu and stays powered in system
++	 * suspend: keep the block running so it can decode the wakeup
++	 * frame, and let the IRQ bring the system back.
++	 */
++	if (device_may_wakeup(dev)) {
++		enable_irq_wake(ir->irq);
++		return 0;
++	}
++
+ 	sunxi_ir_hw_exit(dev);
+ 
+ 	return 0;
+@@ -245,6 +257,14 @@ static int __maybe_unused sunxi_ir_resum
+ 
+ static int __maybe_unused sunxi_ir_resume(struct device *dev)
+ {
++	struct sunxi_ir *ir = dev_get_drvdata(dev);
++
++	/* The block was left untouched at suspend time. */
++	if (device_may_wakeup(dev)) {
++		disable_irq_wake(ir->irq);
++		return 0;
++	}
++
+ 	return sunxi_ir_hw_init(dev);
+ }
+ 
+@@ -353,6 +373,8 @@ static int sunxi_ir_probe(struct platfor
+ 		goto exit_free_dev;
+ 	}
+ 
++	device_init_wakeup(dev, true);
++
+ 	ret = sunxi_ir_hw_init(dev);
+ 	if (ret)
+ 		goto exit_free_dev;

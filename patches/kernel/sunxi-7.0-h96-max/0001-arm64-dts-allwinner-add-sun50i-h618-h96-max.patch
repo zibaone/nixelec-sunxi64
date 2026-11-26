@@ -29,14 +29,15 @@ this one yet.
 
 Signed-off-by: zibao <zibaone@proton.me>
 ---
- arch/arm64/boot/dts/allwinner/Makefile | 1 +
- arch/arm64/boot/dts/allwinner/sun50i-h618-h96-max.dts | 322 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
- 2 files changed, 323 insertions(+)
+ arch/arm64/boot/dts/allwinner/Makefile                |   1 +
+ arch/arm64/boot/dts/allwinner/sun50i-h618-h96-max.dts | 347 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 348 insertions(+)
 
 diff --git a/arch/arm64/boot/dts/allwinner/Makefile b/arch/arm64/boot/dts/allwinner/Makefile
+index 2edfa7b..e32c1bc 100644
 --- a/arch/arm64/boot/dts/allwinner/Makefile
 +++ b/arch/arm64/boot/dts/allwinner/Makefile
-@@ -50,7 +50,8 @@
+@@ -50,6 +50,7 @@ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h618-longanpi-3h.dtb
  dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h618-orangepi-zero2w.dtb
  dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h618-orangepi-zero3.dtb
  dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h618-transpeed-8k618-t.dtb
@@ -44,12 +45,12 @@ diff --git a/arch/arm64/boot/dts/allwinner/Makefile b/arch/arm64/boot/dts/allwin
  dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h618-yuzukihd-chameleon.dtb
  dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h700-anbernic-rg35xx-2024.dtb
  dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h700-anbernic-rg35xx-h.dtb
-
 diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h618-h96-max.dts b/arch/arm64/boot/dts/allwinner/sun50i-h618-h96-max.dts
 new file mode 100644
+index 0000000..40dd467
 --- /dev/null
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h618-h96-max.dts
-@@ -0,0 +1,327 @@
+@@ -0,0 +1,347 @@
 +// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
 +/*
 + * H96 Max H618 — carte sans slot SD, eMMC uniquement.
@@ -151,6 +152,12 @@ new file mode 100644
 +	mmc-pwrseq = <&wifi_pwrseq>;
 +	bus-width = <4>;
 +	non-removable;
++	/*
++	 * Le pilote aic8800 exige MMC_PM_KEEP_POWER : sans ce drapeau son
++	 * suspend renvoie -EINVAL et annule toute la veille (mesure le
++	 * 2026-11-26).
++	 */
++	keep-power-in-suspend;
 +	status = "okay";
 +
 +	sdio_wifi: wifi@1 {
@@ -235,6 +242,19 @@ new file mode 100644
 +	vcc-pg-supply = <&reg_dldo1>;
 +	vcc-ph-supply = <&reg_dldo1>;
 +	vcc-pi-supply = <&reg_dldo1>;
++
++	/*
++	 * Etat « sleep » du RMII. sunxi-gmac cherche un etat pinctrl nomme
++	 * "sleep" et logue `pinctrl_lookup_state(sleep) failed!` sans lui.
++	 * Memes broches que rmii_pins, repassees en entree avec pull-down
++	 * pour ne pas laisser les lignes flottantes pendant la veille.
++	 */
++	rmii_sleep_pins: rmii-sleep-pins {
++		pins = "PA0", "PA1", "PA2", "PA3", "PA4",
++		       "PA5", "PA6", "PA7", "PA8", "PA9";
++		function = "gpio_in";
++		bias-pull-down;
++	};
 +};
 +
 +&uart0 {
@@ -282,8 +302,9 @@ new file mode 100644
 +	interrupt-names = "gmacirq";
 +	clocks = <&ccu CLK_BUS_EMAC1>;
 +	clock-names = "gmac";
-+	pinctrl-names = "default";
++	pinctrl-names = "default", "sleep";
 +	pinctrl-0 = <&rmii_pins>;
++	pinctrl-1 = <&rmii_sleep_pins>;
 +	phy-mode = "rmii";
 +	phy-handle = <&ac300_ephy_h96>;
 +	tx-delay = <7>;
