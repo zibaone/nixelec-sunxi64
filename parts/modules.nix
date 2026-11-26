@@ -300,19 +300,54 @@ in
           digitBase = 104; # 0x68
           digitStride = 2;
         };
-        # Aucune icône n'est mesurée sur cette dalle. Écrire l'octet 0x66
-        # au boot l'éteint (constaté après le switch) : on garde donc le
-        # texte et l'horloge, seuls, jusqu'à mesure des masques.
+        # Dalle mesurée le 2026-11-23, icône par icône (`fd6xx scan --addr 0x66`)
+        # puis confirmée à l'écran : sept icônes sur l'octet 0x66, dans cet
+        # ordre de bits. Ce n'est PAS l'écriture de 0x66 qui éteint la dalle —
+        # c'est la valeur `0x7f` qui porte les sept bits à la fois (mesuré le
+        # 2026-11-25 : `--bit 102:16` allume le colon, `--bit 102:32` allume
+        # lan, sans toucher aux chiffres). Un bit isolé s'écrit normalement.
+        layout.icons = {
+          alarm = {
+            address = 102; # 0x66
+            mask = 1;
+          };
+          usb = {
+            address = 102;
+            mask = 2;
+          };
+          pause = {
+            address = 102;
+            mask = 4;
+          };
+          play = {
+            address = 102;
+            mask = 8;
+          };
+          colon = {
+            address = 102;
+            mask = 16; # 0x10 — le « : » entre HH et MM
+          };
+          lan = {
+            address = 102;
+            mask = 32; # 0x20
+          };
+          wifi = {
+            address = 102;
+            mask = 64; # 0x40
+          };
+        };
+        # Rien d'allumé en permanence : les icônes d'état sont pilotées par
+        # `front-panel-clock` (lan = `operstate` de eth0, wifi = association
+        # de wlan0), et le colon clignote une seconde sur deux.
         icons = [ ];
-        # Pas d'icônes d'état tant que les masques ne sont pas mesurés : les
-        # assertions du module exigent que les noms existent dans layout.icons.
         status = {
-          ethernetIcon = null;
-          wifiIcon = null;
+          enable = true;
+          ethernetIcon = "lan";
+          wifiIcon = "wifi";
         };
         clock = {
           enable = true;
-          colonIcon = null;
+          colonIcon = "colon";
         };
       };
     };
