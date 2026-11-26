@@ -247,11 +247,12 @@ jobs:
           # sous qemu paie le plus cher. Les épingler évite qu'une éviction du
           # cache partagé les fasse disparaître entre deux runs.
           for p in "$h96_kernel" "$h96_modules" "$h96" "$h96_emmc" "$kernel_dev"; do
+            h=$(basename "$p" | cut -c1-32)
             echo "pin $p"
             curl -fsS -X POST \
               -H "Authorization: Bearer $CACHIX_AUTH_TOKEN" \
               -H 'Content-Type: application/json' \
-              -d "{\"name\":\"h96-front-panel\",\"storePath\":\"$p\",\"artifacts\":[]}" \
+              -d "{\"name\":\"h96-front-panel-$h\",\"storePath\":\"$p\",\"artifacts\":[]}" \
               "https://app.cachix.org/api/v1/cache/${CACHE}/pin" >/dev/null
           done
 
