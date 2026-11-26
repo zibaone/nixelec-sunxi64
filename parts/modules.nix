@@ -372,7 +372,10 @@ in
           digitBase = 104; # 0x68
           digitStride = 2;
         };
-        # Aucune icône mesurée sur cette dalle non plus : ne pas écrire 0x66.
+        # Aucune icône mesurée sur cette dalle : le 2026-11-26, les huit bits
+        # de l'octet 0x66 puis le point décimal de chacune des quatre
+        # positions ont été allumés un par un, sans qu'aucun ne produise quoi
+        # que ce soit à l'écran. Elle affiche l'heure, et rien d'autre.
         icons = [ ];
         # Pas d'icônes d'état tant que les masques ne sont pas mesurés : les
         # assertions du module exigent que les noms existent dans layout.icons.

@@ -375,6 +375,12 @@ retirer les icones du profil ; un bit isole s'ecrit normalement. Corollaire
 pour `show` : il efface les icones connues une par une (`--clear ADDR:MASK`),
 jamais par une ecriture globale.
 
+**La Transpeed n'a rien de tout cela (mesure du 2026-11-26).** Les huit bits de
+`0x66` allumes un par un puis le point decimal de chacune des quatre positions
+(`raw 104|106|108|110 0x80`) ne produisent rien a l'ecran. Son profil reste
+donc l'heure seule : `icons = [ ]`, `status` a `null`, `clock.colonIcon =
+null`. Ne pas recopier le profil H96 sur cette carte.
+
 La consequence pratique est importante : l'octet d'icones n'est **pas** une
 grille de chiffre. La disposition des commandes FD650/FD655 le donne :
 
