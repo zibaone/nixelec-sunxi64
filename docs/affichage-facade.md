@@ -173,7 +173,14 @@ TWI maison, 2 fils, **la puce n'ACK pas** :
   **9e top d'horloge** que la puce ne tire pas mais qui est **obligatoire** :
   sans lui des octets sont perdus silencieusement (mesure : une trame de 8 tops
   par octet laisse l'afficheur eteint, la meme en 9 tops fonctionne) ;
-- commande `0x48` = controle, donnee = `(luminosite + 1) << 4 | 0x01` ;
+- commande `0x48` = controle, donnee = `(luminosite + 1) << 4 | 0x01` ; le
+  champ de luminosite est en bits 4-6 et va de 1 a 8, donc l'option 0..7 est
+  decalee de un. **Le `& 7` qui trainait dans `fd6xx` ramenait 8 a 0** :
+  `--brightness 7`, cense etre le maximum, envoyait `0x01` — la luminosite
+  **minimale** — et toutes les mesures faites a 7 avant le 2026-11-26
+  (`nixelec-common` `17f7810`) l'ont donc ete en dalle quasi eteinte. Un
+  afficheur « noir » obtenu avec `--brightness 7` ne prouvait rien ; refaire
+  la mesure a 7 maintenant, ou a 3 (valeur des profils) ;
 - adresses de donnees `0x68, 0x6A, 0x6C, 0x6E, 0x70` (5 grilles) ;
 - **l'adresse 0x68 est le chiffre le plus a droite** (mesure : « 1 » ecrit sur
   0x68 apparait a droite, « 2 » ecrit sur 0x6E apparait a gauche) ;
@@ -367,6 +374,21 @@ ordre confirme a l'ecran :**
 Toutes sur l'adresse **102 (`0x66`)**. Controle du 2026-11-25 sur la H96 #2 :
 `--bit 102:16` allume le « : », `--clear 102:16` l'eteint, `--bit 102:32`
 allume `lan` — les chiffres ne bougent pas.
+
+**Mesure du 2026-11-26 : hôte `.18`, dalle noire apres redemarrage, cause non
+etablie.** La boucle `front-panel-clock` etait `active` sans redemarrage, les
+lignes 226/227 basculaient bien (`out hi` **et** `out lo` echantillonnes pendant
+les ecritures), et aucune unite n'etait en echec — pourtant la dalle est restee
+noire de 09:13 a 11:16. Une ecriture manuelle (`write 8888`) l'a rallumee
+immediatement, puis la boucle a repris normalement. Deux causes candidates,
+non tranchees : un etat de puce perdu (seule une ecriture explicite la reveille)
+ou des ecritures refusees silencieusement (`EBUSY` d'un `fd6xx` reste en fond).
+Depuis `nixelec-common` `17f7810`, le script d'horloge et le rendu statique
+**signalent** l'echec (`front-panel: fd6xx a echoue` sur stderr, visible dans
+`journalctl -u front-panel-clock`) au lieu de l'avaler : au prochain cas, le
+journal distingue les deux. Ne pas conclure « dalle morte » sur une dalle noire
+sans avoir relu ce message, et se souvenir que `--brightness 7` etait la
+luminosite minimale avant ce meme commit.
 
 **Ne jamais ecrire `0x7f` (ni `0xff`) sur `0x66` :** la valeur qui porte les
 sept bits a la fois **eteint la dalle**. C'est ce qui a fait croire, le
