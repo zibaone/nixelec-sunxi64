@@ -375,10 +375,11 @@ in
         # Aucune icône n'obéit à l'écriture par adresse sur cette dalle : le
         # 2026-11-26, les huit bits de 0x66, puis 0x7f, puis le point décimal
         # des quatre positions, puis les bits de 0x70 et 0x72 n'ont rien
-        # produit à l'écran, alors que les chiffres répondent. Le vendor écrit
-        # le masque d'icônes en tête d'un bloc de cinq octets avec les quatre
-        # chiffres (`aml_fd628.c`, mode incrémental) : c'est le mode que
-        # `fd6xx` n'a pas encore. En attendant, heure seule et rien d'autre.
+        # produit à l'écran. Le mode bloc du vendor (`0x40` puis `0xC0|addr`)
+        # est désormais dans `fd6xx burst` et n'a rien changé non plus : sur
+        # cette unité la dalle n'accepte des trames que ~2 min après un cycle
+        # secteur, puis plus rien (mesure 2026-11-26, `docs/affichage-facade.md`
+        # §8). Elle est donc partiellement défaillante, pas mal pilotée.
         icons = [ ];
         # Pas d'icônes d'état tant que les masques ne sont pas mesurés : les
         # assertions du module exigent que les noms existent dans layout.icons.
@@ -386,8 +387,12 @@ in
           ethernetIcon = null;
           wifiIcon = null;
         };
+        # Horloge coupée : la dalle n'affiche plus que des trames isolées,
+        # donc une heure qui se fige à celle du boot est pire qu'une dalle
+        # éteinte, et la boucle de 1 s réécrit dans le vide. Repasser à true
+        # si la nappe est remplacée.
         clock = {
-          enable = true;
+          enable = false;
           colonIcon = null;
         };
       };
