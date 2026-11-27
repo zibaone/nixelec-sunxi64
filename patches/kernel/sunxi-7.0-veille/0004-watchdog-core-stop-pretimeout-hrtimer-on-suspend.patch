@@ -1,0 +1,44 @@
+From: zibao <zibao@proton.me>
+Subject: [PATCH] watchdog: core: stop the pretimeout hrtimer on suspend
+
+The kernel has a software pretimeout hrtimer
+(CONFIG_WATCHDOG_HRTIMER_PRETIMEOUT) beside the keepalive timer.
+watchdog_dev_suspend() cancels the keepalive timer and its worker, but
+leaves the pretimeout timer armed: it fires during s2idle and
+pretimeout_panic() panics the kernel.
+
+Measured on a H96 Max H618 (sunxi-wdt, s2idle, systemd RuntimeWatchdogSec
+15 s): a 60 s sleep armed with rtcwake panics with "watchdog pretimeout
+event".  The stack is:
+
+  pretimeout_panic
+  watchdog_notify_pretimeout
+  watchdog_hrtimer_pretimeout
+  __hrtimer_run_queues
+  hrtimer_interrupt
+  ...
+  default_idle_call
+
+Stop the pretimeout hrtimer on suspend and restart it on resume.
+
+Signed-off-by: zibao <zibao@proton.me>
+
+--- a/drivers/watchdog/watchdog_dev.c
++++ b/drivers/watchdog/watchdog_dev.c
+@@ -1296,6 +1296,7 @@
+ 	 */
+ 	kthread_cancel_work_sync(&wd_data->work);
+ 	hrtimer_cancel(&wd_data->timer);
++	watchdog_hrtimer_pretimeout_stop(wdd);
+ 
+ 	return 0;
+ }
+@@ -1319,6 +1320,8 @@
+ 		ret = __watchdog_ping(wd_data->wdd);
+ 	mutex_unlock(&wd_data->lock);
+ 
++	watchdog_hrtimer_pretimeout_start(wdd);
++
+ 	return ret;
+ }
+ 
