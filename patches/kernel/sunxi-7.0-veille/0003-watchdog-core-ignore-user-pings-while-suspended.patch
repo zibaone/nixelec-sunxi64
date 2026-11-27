@@ -3,9 +3,10 @@ Subject: [PATCH] watchdog: core: ignore user keepalives while suspended
 
 The core PM notifier pings the watchdog for the last time on
 PM_SUSPEND_PREPARE and then cancels the keepalive hrtimer and worker.  A
-userspace keepalive (WDIOC_KEEPALIVE) that reaches the driver just after
-that cancellation re-arms the pretimeout hrtimer: the hrtimer then fires
-in the middle of s2idle and panics the kernel.
+keepalive that reaches the driver just after that cancellation re-arms the
+pretimeout hrtimer: the hrtimer then fires in the middle of s2idle and
+panics the kernel.  It can come from userspace (WDIOC_KEEPALIVE) or from
+the core's own keepalive worker.
 
 Measured on a H96 Max H618 (sunxi-wdt, s2idle, systemd RuntimeWatchdogSec
 15 s): a 60 s sleep armed with rtcwake panics with "watchdog pretimeout
@@ -13,9 +14,9 @@ event" even though the driver stopped the counter before the dpm phase.
 With the userspace watchdog closed (no keepalives), the same sleep resumes
 cleanly.
 
-Mark the watchdog as suspended once the suspend ping succeeded, and ignore
-userspace keepalives until the resume, so the pretimeout hrtimer stays
-cancelled for the whole sleep.
+Mark the watchdog as suspended once the suspend ping succeeded: ignore
+userspace keepalives, make the keepalive worker refuse to ping, and cancel
+the worker before the hrtimer so that no re-arm can slip through.
 
 Signed-off-by: zibao <zibao@proton.me>
 
@@ -41,7 +42,17 @@ Signed-off-by: zibao <zibao@proton.me>
  	set_bit(_WDOG_KEEPALIVE, &wd_data->status);
  
  	wd_data->last_keepalive = ktime_get();
-@@ -1276,6 +1279,8 @@
+@@ -208,6 +211,9 @@
+ 	if (!wdd)
+ 		return false;
+ 
++	if (test_bit(_WDOG_SUSPENDED, &wd_data->status))
++		return false;
++
+ 	if (watchdog_active(wdd))
+ 		return true;
+ 
+@@ -1276,6 +1282,8 @@
  	mutex_lock(&wd_data->lock);
  	if (watchdog_worker_should_ping(wd_data))
  		ret = __watchdog_ping(wd_data->wdd);
@@ -50,7 +61,21 @@ Signed-off-by: zibao <zibao@proton.me>
  	mutex_unlock(&wd_data->lock);
  
  	if (ret)
-@@ -1299,6 +1304,8 @@
+@@ -1283,10 +1291,11 @@
+ 
+ 	/*
+ 	 * make sure that watchdog worker will not kick in when the wdog is
+-	 * suspended
++	 * suspended.  Cancel the worker first: a ping in flight re-arms the
++	 * hrtimer, so the hrtimer must be cancelled last.
+ 	 */
+-	hrtimer_cancel(&wd_data->timer);
+ 	kthread_cancel_work_sync(&wd_data->work);
++	hrtimer_cancel(&wd_data->timer);
+ 
+ 	return 0;
+ }
+@@ -1299,6 +1308,8 @@
  	if (!wdd->wd_data)
  		return -ENODEV;
  
