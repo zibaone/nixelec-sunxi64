@@ -1,0 +1,130 @@
+From e0028ed2b5453f1d0e68162b2d2800aa8446699f Mon Sep 17 00:00:00 2001
+From: Hermes <hermes@local>
+Date: Fri, 27 Nov 2026 19:57:26 +0100
+Subject: [PATCH 1/2] net: sunxi-gmac: add Wake-on-LAN ethtool callbacks
+
+Both callbacks were stubs: get_wol printed "Not support WOL" and set_wol
+returned success without storing anything, so "ethtool -s eth0 wol g" was
+silently ignored and no wakeup source was ever registered on the device.
+
+Store the requested WAKE_* flags and mirror them to the wakeup source of
+the platform device, so /sys/class/net/<if>/device/power/wakeup reports
+the setting.  Only flags the MAC can honour are accepted: the GMAC has no
+magic-packet filter, so the supported set describes which frames its
+address filter lets through.
+
+Signed-off-by: Hermes <hermes@local>
+---
+ sunxi-gmac.c | 68 +++++++++++++++++++++++++++++++++-------------------
+ 1 file changed, 44 insertions(+), 24 deletions(-)
+
+diff --git a/sunxi-gmac.c b/sunxi-gmac.c
+index 3613217..b3d077e 100644
+--- a/sunxi-gmac.c
++++ b/sunxi-gmac.c
+@@ -538,6 +538,12 @@ struct sunxi_gmac {
+ 	 * de chaque trame est donc faux -> controle CRC desactive. */
+ 	bool no_crc_check;
+ 
++	/* Wake-on-LAN: ethtool WAKE_* flags requested by the user.  The GMAC
++	 * has no magic-packet filter, only its receive interrupt can wake the
++	 * system, so these flags describe which frames are let through.
++	 */
++	u32 wolopts;
++
+ 	/* definition spinlock */
+ 	spinlock_t universal_lock;		/* universal spinlock */
+ 
+@@ -2925,44 +2931,52 @@ static int sunxi_gmac_ethtool_set_pauseparam(struct net_device *ndev,
+ 	return 0;
+ }
+ 
++/* The GMAC has no power-management/magic-packet block: its register file
++ * stops at the RMII status register, and the PMT register of the DesignWare
++ * core it derives from is not documented for this integration.  The only
++ * wakeup path is the receive interrupt, which fires for every frame the MAC
++ * filter accepts.  A magic packet is one of those frames, but it cannot be
++ * told apart from the others in hardware.
++ */
++#define SUNXI_GMAC_WOL_SUPPORTED \
++	(WAKE_MAGIC | WAKE_UCAST | WAKE_MCAST | WAKE_BCAST)
++
+ /**
+- * sunxi_gmac_ethtool_get_wol - Get device wake-on-lan settings.
+- *
+- * @ndev:	Pointer to net_device structure
+- * @wol:	Pointer to ethtool_wolinfo structure
+- *
+- * This implements ethtool command for get wake-on-lan settings.
+- * Issue "ethtool -s ethx wol p|u|m|b|a|g|s|d" under linux prompt to execute
+- * this function.
++ * sunxi_gmac_ethtool_get_wol - report the wake-on-LAN settings
++ * @ndev: The Allwinner GMAC network adapter
++ * @wol: ethtool wake-on-LAN information to fill
+  */
+ static void sunxi_gmac_ethtool_get_wol(struct net_device *ndev,
+-				struct ethtool_wolinfo *wol)
++				       struct ethtool_wolinfo *wol)
+ {
+ 	struct sunxi_gmac *chip = netdev_priv(ndev);
+ 
+-	spin_lock_irq(&chip->universal_lock);
+-	/* TODO: need to support wol */
+-	spin_unlock_irq(&chip->universal_lock);
+-
+-	sunxi_err(chip->dev, "Not support WOL\n");
++	wol->supported = SUNXI_GMAC_WOL_SUPPORTED;
++	wol->wolopts = chip->wolopts;
+ }
+ 
+ /**
+- * sunxi_gmac_ethtool_set_wol - set device wake-on-lan settings.
++ * sunxi_gmac_ethtool_set_wol - set the wake-on-LAN settings
++ * @ndev: The Allwinner GMAC network adapter
++ * @wol: ethtool wake-on-LAN information to apply
+  *
+- * @ndev:	Pointer to net_device structure
+- * @wol:	Pointer to ethtool_wolinfo structure
++ * Only the flags in SUNXI_GMAC_WOL_SUPPORTED are accepted.  Enabling any of
++ * them makes the system keep the MAC, its DMA ring and the PHY alive across
++ * s2idle, with the receive interrupt armed as a wakeup source.  Disabling
++ * them all restores the power-down suspend path.
+  *
+- * This implements ethtool command for set wake-on-lan settings.
+- * Issue "ethtool -s ethx wol p|u|n|b|a|g|s|d" under linux prompt to execute
+- * this function.
++ * Return: 0 on success, -EOPNOTSUPP for unsupported flags.
+  */
+ static int sunxi_gmac_ethtool_set_wol(struct net_device *ndev,
+-				struct ethtool_wolinfo *wol)
++				      struct ethtool_wolinfo *wol)
+ {
+-	/*
+-	 * TODO: Wake-on-lane function need to be supported.
+-	 */
++	struct sunxi_gmac *chip = netdev_priv(ndev);
++
++	if (wol->wolopts & ~SUNXI_GMAC_WOL_SUPPORTED)
++		return -EOPNOTSUPP;
++
++	chip->wolopts = wol->wolopts;
++	device_set_wakeup_enable(chip->dev, !!chip->wolopts);
+ 
+ 	return 0;
+ }
+@@ -3856,6 +3870,12 @@ static int sunxi_gmac_probe(struct platform_device *pdev)
+ 	chip = netdev_priv(ndev);
+ 	platform_set_drvdata(pdev, ndev);
+ 
++	/* Expose /sys/class/net/<if>/device/power/wakeup.  The GMAC can wake
++	 * the system through its receive interrupt; the capability stays
++	 * disabled until "ethtool -s <if> wol g" enables it.
++	 */
++	device_set_wakeup_capable(&pdev->dev, true);
++
+ #if IS_ENABLED(CONFIG_AW_EPHY)
+ 	chip->ephy_ops = (struct sunxi_gmac_ephy_ops *)match->data;
+ #endif /* CONFIG_AW_EPHY */
+-- 
+2.54.0
+
