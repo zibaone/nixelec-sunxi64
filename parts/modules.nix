@@ -186,6 +186,10 @@ in
     familyKernel { inherit pkgs extraConfig; };
 
   flake.nixosModules = {
+    # Socle veille/réveil : contrat dans nixelec-common, la couche famille
+    # apporte les sources mesurées (IR, WoL).
+    power = inputs.nixelec-common.nixosModules.power;
+
     # Family base: nixbian + sunxi64 quirks (GPU, HDMI audio, console).
     # Le noyau est produit ici, plus par nixbian (modèle B).
     sunxi64 =
