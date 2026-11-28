@@ -336,30 +336,34 @@ Verdict : **la série fait ce qu'elle annonce — et c'est inutilisable tel quel
 |---|---|
 | `Supports Wake-on` | `umbg` (l'ancien module répondait `d`) |
 | `ethtool -s eth0 wol g` puis `systemctl suspend` | `WoL armed, MAC and PHY kept powered`, reprise `WoL resume, MAC kept running` |
-| Réveil **sans envoyer aucun paquet** | **20 ms** après l'armement, `pm_wakeup_irq = 303` (GIC 47, `5030000.ethernet`) |
+| Réveil **sans envoyer aucun paquet** | **20 ms** après l'armement, `pm_wakeup_irq` = `5030000.ethernet` |
 | Réveil avec magic packet | inutile à mesurer : la boîte était déjà réveillée |
 | Témoin `wol d`, même suspend | dort 27,7 s, réveil par l'alarme RTC — le socle est sain |
 
 Donc « réveil sur réception » n'est pas seulement non sélectif vis-à-vis des
 trames : sur un LAN vivant (ARP, RA/ND, mDNS), la boîte ne reste pas endormie.
-Trois causes se cumulent, toutes dans le chemin WoL du module :
 
-1. `SUNXI_GMAC_RX_FRM_FLT` (0x38) reste dans l'état du runtime (pass-all /
-   multicast / broadcast) : le filtre laisse passer tout ce que le LAN émet ;
-2. `SUNXI_GMAC_INT_EN` garde `TX_INT | RX_INT | TX_UNF_INT` : une completion TX
-   peut réveiller ;
-3. rien ne vide `SUNXI_GMAC_INT_STA` (0x08) avant `enable_irq_wake()` : une
-   interruption déjà latchée (trame reçue juste avant la veille) suffit à
-   annuler le s2idle.
+**Itération 2 — filtre unicast (0002, 2026-11-28) : posé, effet NON démontré.**
+Le chemin suspend sauvegarde `RX_FRM_FLT`/`INT_EN`, passe le filtre en unicast
+parfait (`DBF`, `PR`/`PM`/`RA`/`HUC`/`HMC` à 0), purge `INT_STA` et ne garde que
+`RX_INT`. Mesure après déploiement et reboot : le réveil **persiste**, ~90-270 ms
+après `WoL armed`, toujours avec `pm_wakeup_irq` = GMAC. Le compteur
+`rx_packets` n'est pas concluant : il est lu après la reprise, donc il compte
+aussi le trafic des secondes où la box était réveillée (+28 trames).
 
-**Prochaine itération (non faite)** : dans le chemin suspend, sauvegarder
-`RX_FRM_FLT`, le passer en **unicast parfait seulement** (`PR`/`PM`/`RA`/`HUC`/
-`HMC` à 0, `DBF` à 1), écrire `INT_STA` pour purger le latch, réduire `INT_EN`
-à `RX_INT`, puis armer l'IRQ ; restaurer le filtre au resume. Corollaire côté
-banc : envoyer un **magic packet unicast** (`wakeonlan -i <ip> <mac>`), pas un
-broadcast — `DBF` le jetterait. Tant que ce n'est pas fait, **ne pas activer
-`wol g` par défaut** : la politique A (« éteindre = suspendre ») serait cassée
-sur toute box câblée.
+Ce qui manque pour trancher : un instantané **au moment du réveil** (première
+chose que fait un hook de reprise : `rx_packets` + `INT_STA`), ou une sonde sur
+la ligne d'IRQ. Deux hypothèses restent ouvertes :
+
+1. le MAC accepte les trames malgré le filtre (mauvais registre, ou un bit de
+   « receive all » posé ailleurs) — le filtre serait alors un no-op ;
+2. le réveil vient d'une IRQ **déjà latchée** au moment de l'armement (la DMA
+   reçoit pendant les ~12 s que prend la mise en veille de l'ACI8800) : vider
+   `INT_STA` ne suffit pas si une trame est en cours de réception.
+
+Tant que ce n'est pas tranché : **ne pas activer `wol g` par défaut** et ne pas
+annoncer WoL comme utilisable — la politique A (« éteindre = suspendre »)
+resterait cassée sur toute box câblée.
 
 ## 5. Inconnues qui exigent une mesure silicium
 
