@@ -1,0 +1,103 @@
+From 361b13d04e92c9b6eb624ed127c0ae147cffef7b Mon Sep 17 00:00:00 2001
+From: Hermes <hermes@local>
+Date: Fri, 27 Nov 2026 19:58:05 +0100
+Subject: [PATCH 2/2] net: sunxi-gmac: keep the MAC and PHY alive across s2idle
+ for WoL
+
+The suspend callback stopped the DMA engine, wrote BMCR_PDOWN through
+sunxi_gmac_phy_release() and gated the GMAC clocks, so a magic packet
+could never reach the MAC: the PHY was powered down and the receiver
+unclocked before the system entered s2idle.
+
+When a wake-on-LAN flag is set and the interface is up, skip that
+teardown: detach the netdev from the stack, stop the transmit queues and
+arm the receive interrupt as a wakeup source, leaving the MAC, its
+descriptor ring and the PHY running.  The first frame accepted by the
+MAC address filter then raises the interrupt and aborts s2idle.
+
+Resume only undoes what suspend did.  The device was never stopped, so
+the RX ring and the link state are still valid and no reconfiguration is
+needed.
+
+Signed-off-by: Hermes <hermes@local>
+---
+ sunxi-gmac.c | 49 +++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 49 insertions(+)
+
+diff --git a/sunxi-gmac.c b/sunxi-gmac.c
+index b3d077e..e15f260 100644
+--- a/sunxi-gmac.c
++++ b/sunxi-gmac.c
+@@ -544,6 +544,11 @@ struct sunxi_gmac {
+ 	 */
+ 	u32 wolopts;
+ 
++	/* Set when the MAC, its DMA ring and the PHY were kept alive across
++	 * the last suspend so that a received frame could wake the system.
++	 */
++	bool wol_armed;
++
+ 	/* definition spinlock */
+ 	spinlock_t universal_lock;		/* universal spinlock */
+ 
+@@ -1958,6 +1963,25 @@ static int sunxi_gmac_resume(struct device *dev)
+ 	if (!ndev)
+ 		return 0;
+ 
++	if (chip->wol_armed) {
++		chip->wol_armed = false;
++		disable_irq_wake(ndev->irq);
++
++		/* Nothing was torn down before suspend: hand the device back
++		 * to the stack with its RX ring, DMA state and link intact.
++		 * netif_device_attach() restarts the transmit queues.
++		 */
++		netif_device_attach(ndev);
++
++		/* suspend error workaround */
++		if (ndev->phydev)
++			dev_set_uevent_suppress(&ndev->phydev->mdio.dev,
++						chip->gmac_uevent_suppress);
++
++		sunxi_info(chip->dev, "WoL resume, MAC kept running\n");
++		return 0;
++	}
++
+ 	sunxi_gmac_power_on(chip);
+ 
+ 	sunxi_gmac_clk_enable(chip);
+@@ -1991,6 +2015,31 @@ static int sunxi_gmac_suspend(struct device *dev)
+ 		dev_set_uevent_suppress(&ndev->phydev->mdio.dev, true);
+ 	}
+ 
++	/*
++	 * Wake-on-LAN: the GMAC has no PMT block, so its receive interrupt is
++	 * the only wakeup event it can produce.  Keep the MAC clocked, its RX
++	 * DMA ring armed and the PHY powered, and turn the interrupt into a
++	 * wakeup source.  The first frame accepted by the MAC address filter
++	 * then brings the system out of s2idle.  The PHY core skips the PHY by
++	 * itself: mac_managed_pm is set and the netdev has WoL enabled.
++	 */
++	if (netif_running(ndev) && device_may_wakeup(dev) && chip->wolopts) {
++		if (!enable_irq_wake(ndev->irq)) {
++			chip->wol_armed = true;
++			netif_device_detach(ndev);
++			/* Stop the queues and wait for in-flight frames, so no
++			 * TX completion can fire once the IRQ is a wakeup
++			 * source.
++			 */
++			netif_tx_disable(ndev);
++			sunxi_info(chip->dev, "WoL armed, MAC and PHY kept powered\n");
++			return 0;
++		}
++		sunxi_err(chip->dev, "Failed to arm irq %d as wakeup source\n",
++			  ndev->irq);
++		/* Fall back to the power-down path below. */
++	}
++
+ 	if (netif_running(ndev)) {
+ 		netif_device_detach(ndev);
+ 		sunxi_gmac_stop(ndev);
+-- 
+2.54.0
+
