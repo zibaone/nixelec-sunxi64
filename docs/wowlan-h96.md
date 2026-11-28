@@ -17,6 +17,26 @@ comparables. Les deux mesures qui décident du verdict sont listées au §10.
 | Le firmware sait-il matcher un motif de réveil ? | l'API existe dans l'en-tête, jamais appelée ; **non prouvé** |
 | Verdict | **faisable avec travail vendor**, sous deux mesures bloquantes |
 
+### État au 2026-11-28 (mesuré sur carte)
+
+Ce document a été écrit le 2026-11-27 par lecture de source. Depuis, trois
+choses ont été mesurées sur les H96 et changent le point de départ :
+
+- **Le prérequis DT est rempli** : `keep-power-in-suspend` est présent sur
+  `mmc@4021000` dans le DTB des générations courantes. Sans lui,
+  `aicbsp_sdio_suspend` renvoie `-EINVAL` (« can't keep power while host is
+  suspended ») et **toute la veille est annulée** — mesuré sur `.18` avant
+  reboot sur une génération dont le DTB ne l'avait pas.
+- **Le réveil IR est le modèle qui marche** (`sunxi-7.0-veille` 0002) :
+  `device_init_wakeup(dev, true)` au probe, `enable_irq_wake(ir->irq)` au
+  suspend. C'est le patron à imiter pour l'IRQ PG15 du WoWLAN.
+- **Le faux positif est confirmé sur la box** : `rc0` a bien `[nec]` et
+  `[lirc]`, mais le pilote SDIO n'a aucune op `suspend`/`resume` cfg80211 —
+  `iw phy0 wowlan enable magic-packet` ne fait que valider `wiphy->wowlan`.
+
+Banc de test : `.22` (headless, câblé) pour les cycles de veille ; `.18` est le
+kiosque TV, à ne pas suspendre sans accord.
+
 ## 1. Méthode
 
 Sources lues, sans build ni carte :
@@ -318,8 +338,9 @@ Non bloquants mais à documenter :
 
 5. consommation en veille avec l'association maintenue
    (`CONFIG_AUTO_POWERSAVE` est à `n`, la puce reste active) ;
-6. `reg_dldo1` (vmmc de mmc1) reste-t-il alimenté en s2idle — c'est ce que
-   `keep-power-in-suspend` suppose ;
+6. `reg_dldo1` (vmmc de mmc1) reste-t-il alimenté en s2idle — `keep-power` est
+   présent et le suspend SDIO réussit (2026-11-28), mais l'alimentation réelle
+   du rail pendant la veille n'est pas mesurée ;
 7. le paquet magique doit-il être broadcast (clé de groupe) ou unicast
    (clé par station) pour que le moteur le voie ;
 8. compilation réelle des patchs 0002/0003 (aucun build ARM fait ici).
