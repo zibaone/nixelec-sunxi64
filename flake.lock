@@ -68,11 +68,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1795832900,
-        "narHash": "sha256-Cv9jNaxgZBvSZ3dkJ4Gs6/2xLebFXTsH4ikI6zHJIOg=",
+        "lastModified": 1795833536,
+        "narHash": "sha256-1/uXmCqg4Xy7klgQFlW6ODIX3ZUS2ioGHgmNVt30Ulk=",
         "owner": "zibaone",
         "repo": "nixelec-common",
-        "rev": "5c02e5f1771d73bc260854233c67c50cde8415f2",
+        "rev": "530f96c3351755954ba365b5d01d65977f61bfa4",
         "type": "github"
       },
       "original": {
