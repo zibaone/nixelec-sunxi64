@@ -361,6 +361,43 @@ la ligne d'IRQ. Deux hypothèses restent ouvertes :
    reçoit pendant les ~12 s que prend la mise en veille de l'ACI8800) : vider
    `INT_STA` ne suffit pas si une trame est en cours de réception.
 
+**Itération 3 — instrumentation noyau + capture (2026-11-28, `.22`).**
+
+Le noyau expose `/dev/mem` sans `STRICT_DEVMEM` : on peut lire/écrire les
+registres du MAC depuis l'espace utilisateur. Trois mesures :
+
+1. **Le filtre est effectif** (test runtime, `0x38` ← `0x00020000` =
+   unicast parfait + `DBF`) : 3 `arping` broadcast → **0 réponse**, ping sans
+   entrée ARP → 100 % de perte, ping unicast avec ARP statique → OK (4,5 ms).
+   Restauré à `0x200` : ARP de nouveau fonctionnel. La valeur du patch est donc
+   la bonne et le registre obéit.
+2. **Instrumentation du chemin WoL** (patch de debug temporaire, non commité) :
+   `flt=0x00020000` avant **et** après la veille, `sta=0x40000000`,
+   `en=0x00000100`, et le pointeur `RX_CUR_DESC` avance d'un descripteur
+   (`…f90` → `…fa0`). Réveil 86-170 ms après l'armement, `pm_wakeup_irq` = GMAC.
+3. **Capture `tcpdump` sur eth0 pendant la veille** : **aucune trame** dans la
+   fenêtre (trou de 38 s entre un IGMP à +1,7 s et mon ping de contrôle). Le
+   réveil n'est donc **pas** causé par du trafic.
+
+Conclusion : le filtre n'est pas en cause et il n'y a pas de trame. L'IRQ de
+réception du MAC est assertée **spontanément** en s2idle. Le handler passe
+avant le `resume` et purge `INT_STA`, donc on ne voit pas le bit coupable ; le
+seul bit visible, `0x40000000`, est permanent et **non effaçable** par écriture
+(il est hors du masque `0x3fff` du driver).
+
+Pistes, par coût croissant :
+- bisect `INT_EN` par paramètre de module (`0x100` → `0`) : si la box dort avec
+  `INT_EN=0`, l'IRQ vient bien du MAC et il faut identifier le statut ;
+- purger/réarmer le ring RX avant d'armer (`napi_synchronize` + reset du
+  pointeur) plutôt que de le laisser tel quel ;
+- vérifier la piste PHY/link : le DTS ne déclare **qu'une** IRQ
+  (`GICv2 47 Level`), donc pas d'IRQ de PHY séparée — mais le PHY peut encore
+  être la source si l'EPHY interne tire la ligne.
+
+Autre mesure à ne pas perdre : l'entrée en veille a pris **46 s** une fois
+(ACI8800), contre ~1 s en temps normal — la box reste éveillée tout ce temps
+après la demande d'extinction. À surveiller pour la politique A.
+
 Tant que ce n'est pas tranché : **ne pas activer `wol g` par défaut** et ne pas
 annoncer WoL comme utilisable — la politique A (« éteindre = suspendre »)
 resterait cassée sur toute box câblée.
