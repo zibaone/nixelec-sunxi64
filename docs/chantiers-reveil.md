@@ -3,7 +3,7 @@
 > **État au 2026-11-28.** Trois chemins sont étudiés ; aucun ne réveille une
 > box **réellement hors tension** — c'est un fait de matériel, pas un manque de
 > patch (voir §5, « arrêt réel »). Depuis, les mesures ont avancé : le réveil
-> **IR** est validé, le **WoL** est implémenté (série `patches/kernel/sunxi-7.0-wol`,
+> **IR** est validé, le **WoL** est implémenté (série `packages/sunxi-gmac/patches/`,
 > verdict silicium à faire), le **WoWLAN** reste un chantier vendor non mesuré.
 
 ## Résumé
@@ -77,7 +77,7 @@ poursuivi : voir §5, il n'est pas portable en mainline sur H616.
 
 Le driver porté `packages/sunxi-gmac/src/sunxi-gmac.c` avait des stubs
 (`Not support WOL`) et son suspend coupait MAC/PHY. La série
-`patches/kernel/sunxi-7.0-wol/` (appliquée au module, pas au noyau) rend
+`packages/sunxi-gmac/patches/` (appliquée au module, pas au noyau) rend
 `ethtool -s eth0 wol g` effectif et garde MAC/RX ring/PHY vivants en s2idle
 quand `wol` est armé. Le MAC n'a **pas** de filtre magic-packet : toute trame
 acceptée par le filtre d'adresse réveille (ARP, SSDP, ping). Protocole de test

@@ -11,9 +11,11 @@
 # `src/` porte **l'arbre complet tel qu'il est compilé** : le BSP d'origine,
 # porté sur l'API 7.0.14, plus les correctifs mesurés sur la carte (voir
 # `docs/etude-portage-sunxi-gmac.md`). Le Wake-on-LAN est la seule exception :
-# il vit dans la série `patches/kernel/sunxi-7.0-wol/`, appliquée ci-dessous,
-# pour rester relisible (`patch -p1 --dry-run`, checkpatch) et publiable telle
-# quelle. Le reste de `src/` s'édite toujours directement.
+# il vit dans `patches/` de ce paquet, appliquée ci-dessous, pour rester
+# relisible (`patch -p1 --dry-run`, checkpatch) et publiable telle quelle.
+# **Hors de `patches/kernel/` exprès** : cette série ne patche pas le noyau,
+# et l'y laisser changeait le hash du noyau (donc un rebuild complet) à chaque
+# retouche du pilote. Le reste de `src/` s'édite toujours directement.
 # `src/shim/` remplace les en-têtes du BSP absents de l'arbre principal
 # (journalisation, SID, tracepoints).
 #
@@ -43,8 +45,8 @@ stdenv.mkDerivation {
   # `a/sunxi-gmac.c`).  `patchPhase` la pose avant `buildPhase` ; l'ordre de la
   # liste est celui de `series.conf`.
   patches = [
-    ../../patches/kernel/sunxi-7.0-wol/0001-net-sunxi-gmac-add-wake-on-lan-ethtool-callbacks.patch
-    ../../patches/kernel/sunxi-7.0-wol/0002-net-sunxi-gmac-keep-mac-and-phy-alive-in-s2idle.patch
+    ./patches/0001-net-sunxi-gmac-add-wake-on-lan-ethtool-callbacks.patch
+    ./patches/0002-net-sunxi-gmac-keep-mac-and-phy-alive-in-s2idle.patch
   ];
 
   buildInputs = [ kernel.dev ];

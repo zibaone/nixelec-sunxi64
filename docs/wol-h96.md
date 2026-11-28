@@ -3,7 +3,7 @@
 État au 2026-11-27. Objet : rendre `ethtool -s eth0 wol g` effectif, puis
 réveiller la box d'un `systemctl suspend` (s2idle) avec un magic packet.
 
-Série : `patches/kernel/sunxi-7.0-wol/` (2 patchs, cible = le module hors
+Série : `packages/sunxi-gmac/patches/` (2 patchs, cible = le module hors
 arbre `packages/sunxi-gmac/src`, **pas** l'arbre noyau).
 
 ## 1. Verdict
@@ -200,12 +200,12 @@ module, puis checkpatch (0 erreur, 0 warning mesuré sur les deux patchs) :
 ```bash
 T=$(mktemp -d); cp -a packages/sunxi-gmac/src/. "$T"/
 cd "$T"
-for p in <repo>/patches/kernel/sunxi-7.0-wol/000*.patch; do
+for p in <repo>/packages/sunxi-gmac/patches/000*.patch; do
     patch -p1 < "$p" || break
 done
 
 perl <noyau>/scripts/checkpatch.pl --no-tree --strict \
-    "<repo>/patches/kernel/sunxi-7.0-wol/0001-…patch"
+    "<repo>/packages/sunxi-gmac/patches/0001-…patch"
 ```
 
 Deux pièges de vérification, tous deux mesurés :
@@ -374,7 +374,7 @@ précédente (`/nix/var/nix/profiles/system-*-link`) et recharger le module.
 - `packages/sunxi-gmac/src/sunxi-gmac.c` — registres (99-123), `get_wol`/
   `set_wol` (2938/2960), suspend/resume (1974/1947), `phy_release` (1602),
   message dmesg (1867), `mac_managed_pm` (1913).
-- `patches/kernel/sunxi-7.0-wol/series.conf` — ordre, cible, limites.
+- `packages/sunxi-gmac/patches/series.conf` — ordre, cible, limites.
 - `patches/kernel/sunxi-7.0-h96-max/0001-…` — DTS de la carte (`&emac1`).
 - `docs/etude-portage-sunxi-gmac.md` — pourquoi le module vendor et pas
   `dwmac-sun8i`.
