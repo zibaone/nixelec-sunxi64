@@ -390,6 +390,22 @@ journal distingue les deux. Ne pas conclure « dalle morte » sur une dalle noir
 sans avoir relu ce message, et se souvenir que `--brightness 7` etait la
 luminosite minimale avant ce meme commit.
 
+**Mesure du 2026-11-27 : cause trouvee — c'etait le byte de controle.**
+La dalle du H96 #2 est restee noire depuis un cycle d'alimentation, malgre le
+service `active`, les lignes 226/227 qui basculaient et des ecritures `fd6xx`
+qui sortaient 0. Le noyau, le DTB et le userspace etaient pourtant **identiques
+au `.18` qui affichait** (meme noyau `yj7qmj`, meme DTB `5a6ec45d`, meme
+binaire). Test decisif : la sequence vendor `0x48 0x01` suivie des grilles a
+`0x7f` rallume la dalle, alors que `0x48 0x41` — le byte qu'envoyait `fd6xx`
+depuis toujours — est **ignore** par la puce. Elle garde donc son etat, et une
+dalle eteinte le reste indefiniment, sans aucune erreur d'ecriture.
+`--brightness` n'a aucun effet mesurable (0x01, 0x03, 0x07, 0x0f et 0x71
+visuellement identiques). Corrige dans `nixelec-common` `5c02e5f` : controle
+fixe a `0x01` sur les cinq chemins (`show`/`raw`/`burst`/`scan`/`write`).
+Verifie : display off (`0x48 0x00`) puis `write 8888` rallume, avec `lan` et
+`wifi` preserves. Le `.18` n'a jamais montre le bug parce que sa dalle ne
+s'est jamais retrouvee eteinte — le defaut y etait latent.
+
 **Ne jamais ecrire `0x7f` (ni `0xff`) sur `0x66` :** la valeur qui porte les
 sept bits a la fois **eteint la dalle**. C'est ce qui a fait croire, le
 2026-11-25 au matin, que « l'ecriture de `0x66` eteint l'ecran » et fait
