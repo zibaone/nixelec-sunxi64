@@ -1,7 +1,7 @@
 From 361b13d04e92c9b6eb624ed127c0ae147cffef7b Mon Sep 17 00:00:00 2001
 From: Hermes <hermes@local>
 Date: Fri, 27 Nov 2026 19:58:05 +0100
-Subject: [PATCH 2/2] net: sunxi-gmac: keep the MAC and PHY alive across s2idle
+Subject: [PATCH 2/2] net: sunxi-gmac: keep the MAC and PHY alive, and filter RX,
  for WoL
 
 The suspend callback stopped the DMA engine, wrote BMCR_PDOWN through
@@ -12,23 +12,25 @@ unclocked before the system entered s2idle.
 When a wake-on-LAN flag is set and the interface is up, skip that
 teardown: detach the netdev from the stack, stop the transmit queues and
 arm the receive interrupt as a wakeup source, leaving the MAC, its
-descriptor ring and the PHY running.  The first frame accepted by the
-MAC address filter then raises the interrupt and aborts s2idle.
+descriptor ring and the PHY running.
 
-Resume only undoes what suspend did.  The device was never stopped, so
-the RX ring and the link state are still valid and no reconfiguration is
-needed.
+The MAC has no PMT block, so its receive interrupt is the only wakeup
+event it can produce: any frame the address filter accepts wakes the
+system. Measured on H96 Max H618 (2026-11-28): with the filter left as at
+runtime the board left s2idle 20 ms after the interrupt was armed, without
+any packet being sent, because broadcast traffic is accepted. Restrict the
+receive filter to perfect unicast for the duration of the suspend
+(SUNXI_GMAC_FRAME_FILTER_DBF on, PR/PM/RA/HUC/HMC off, address filter
+matching our MAC), clear the latched interrupt status and keep only the RX
+interrupt enabled. A unicast magic packet still matches; broadcast ARP and
+multicast ND/mDNS no longer wake the board.
 
-Signed-off-by: Hermes <hermes@local>
----
- sunxi-gmac.c | 49 +++++++++++++++++++++++++++++++++++++++++++++++++
- 1 file changed, 49 insertions(+)
+Resume restores the filter and the interrupt mask saved by suspend.
 
 diff --git a/sunxi-gmac.c b/sunxi-gmac.c
-index b3d077e..e15f260 100644
 --- a/sunxi-gmac.c
 +++ b/sunxi-gmac.c
-@@ -544,6 +544,11 @@ struct sunxi_gmac {
+@@ -544,6 +544,18 @@
  	 */
  	u32 wolopts;
  
@@ -37,16 +39,28 @@ index b3d077e..e15f260 100644
 +	 */
 +	bool wol_armed;
 +
++	/* Filtre de réception et masque d'interruption sauvegardés par le
++	 * chemin WoL : sans PMT, il faut restreindre la réception à l'unicast
++	 * parfait pendant la veille, sinon toute trame du LAN réveille.
++	 */
++	u32 wol_saved_frm_flt;
++	u32 wol_saved_int_en;
++
  	/* definition spinlock */
  	spinlock_t universal_lock;		/* universal spinlock */
  
-@@ -1958,6 +1963,25 @@ static int sunxi_gmac_resume(struct device *dev)
+@@ -1958,6 +1970,30 @@
  	if (!ndev)
  		return 0;
  
 +	if (chip->wol_armed) {
 +		chip->wol_armed = false;
 +		disable_irq_wake(ndev->irq);
++
++		/* Restaurer ce que le chemin WoL a restreint. */
++		writel(chip->wol_saved_int_en, chip->base + SUNXI_GMAC_INT_EN);
++		writel(chip->wol_saved_frm_flt, chip->base + SUNXI_GMAC_RX_FRM_FLT);
++		writel(SUNXI_GMAC_INT_OFFSET, chip->base + SUNXI_GMAC_INT_STA);
 +
 +		/* Nothing was torn down before suspend: hand the device back
 +		 * to the stack with its RX ring, DMA state and link intact.
@@ -66,7 +80,7 @@ index b3d077e..e15f260 100644
  	sunxi_gmac_power_on(chip);
  
  	sunxi_gmac_clk_enable(chip);
-@@ -1991,6 +2015,31 @@ static int sunxi_gmac_suspend(struct device *dev)
+@@ -1991,6 +2027,56 @@
  		dev_set_uevent_suppress(&ndev->phydev->mdio.dev, true);
  	}
  
@@ -79,6 +93,31 @@ index b3d077e..e15f260 100644
 +	 * itself: mac_managed_pm is set and the netdev has WoL enabled.
 +	 */
 +	if (netif_running(ndev) && device_may_wakeup(dev) && chip->wolopts) {
++		/*
++		 * Le MAC n'a pas de bloc PMT : son interruption de réception est
++		 * le seul événement de réveil, donc toute trame que le filtre
++		 * accepte réveille. Sur un LAN vivant (ARP, RA/ND, mDNS) la box
++		 * ne reste pas endormie. On restreint la réception à l'unicast
++		 * parfait : DBF jette le broadcast, la fin de PM le multicast,
++		 * et le filtre d'adresse ne laisse passer que notre MAC — un
++		 * magic packet unicast suffit à réveiller.
++		 */
++		chip->wol_saved_frm_flt = readl(chip->base + SUNXI_GMAC_RX_FRM_FLT);
++		writel((chip->wol_saved_frm_flt &
++			~(SUNXI_GMAC_FRAME_FILTER_PR | SUNXI_GMAC_FRAME_FILTER_PM |
++			  SUNXI_GMAC_FRAME_FILTER_RA | SUNXI_GMAC_FRAME_FILTER_HUC |
++			  SUNXI_GMAC_FRAME_FILTER_HMC)) |
++		       SUNXI_GMAC_FRAME_FILTER_DBF,
++		       chip->base + SUNXI_GMAC_RX_FRM_FLT);
++
++		/* Purger le latch : une interruption déjà levée (trame reçue
++		 * juste avant la veille) annulerait le s2idle immédiatement.
++		 * Ne garder que RX comme source de réveil.
++		 */
++		chip->wol_saved_int_en = readl(chip->base + SUNXI_GMAC_INT_EN);
++		writel(SUNXI_GMAC_INT_OFFSET, chip->base + SUNXI_GMAC_INT_STA);
++		writel(SUNXI_GMAC_RX_INT, chip->base + SUNXI_GMAC_INT_EN);
++
 +		if (!enable_irq_wake(ndev->irq)) {
 +			chip->wol_armed = true;
 +			netif_device_detach(ndev);
@@ -100,4 +139,3 @@ index b3d077e..e15f260 100644
  		sunxi_gmac_stop(ndev);
 -- 
 2.54.0
-

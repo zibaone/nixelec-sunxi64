@@ -46,7 +46,7 @@ stdenv.mkDerivation {
   # liste est celui de `series.conf`.
   patches = [
     ./patches/0001-net-sunxi-gmac-add-wake-on-lan-ethtool-callbacks.patch
-    ./patches/0002-net-sunxi-gmac-keep-mac-and-phy-alive-in-s2idle.patch
+    ./patches/0002-net-sunxi-gmac-keep-mac-and-phy-alive-and-filter-rx-in-s2idle.patch
   ];
 
   buildInputs = [ kernel.dev ];
