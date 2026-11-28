@@ -1,7 +1,8 @@
 # Wake-on-LAN sur la H96 Max H618 (sunxi-gmac, s2idle)
 
-État au 2026-11-27. Objet : rendre `ethtool -s eth0 wol g` effectif, puis
+État au 2026-11-28. Objet : rendre `ethtool -s eth0 wol g` effectif, puis
 réveiller la box d'un `systemctl suspend` (s2idle) avec un magic packet.
+Mesure silicium et verdict détaillé : §4 bis.
 
 Série : `packages/sunxi-gmac/patches/` (2 patchs, cible = le module hors
 arbre `packages/sunxi-gmac/src`, **pas** l'arbre noyau).
@@ -10,16 +11,18 @@ arbre `packages/sunxi-gmac/src`, **pas** l'arbre noyau).
 
 | Question | Réponse | Pourquoi |
 |---|---|---|
-| Réveil depuis s2idle sur une trame reçue | **oui**, avec cette série | s2idle ne coupe pas la SoC ; l'IRQ RX reste armable |
+| Réveil depuis s2idle sur une trame **unicast** reçue | **oui**, validé silicium | s2idle ne coupe pas la SoC ; l'IRQ RX reste armable |
+| Réveil par un magic packet **broadcasté** | **non** | `DBF` jette le broadcast en veille (§4 bis) |
 | Filtrage matériel du magic packet | **non** | le MAC n'a pas de bloc PMT documenté (§2.2) |
 | Réveil depuis `poweroff` | **non** | l'AXP1530 coupe les rails ; plus rien n'écoute |
 | Réveil depuis `mem` (suspend-to-RAM) | **non** | non supporté sur cette famille ; `mem_sleep` = `[s2idle]` |
 
 Conséquence à assumer : `ethtool -s eth0 wol g` arme bien le réveil et un
-magic packet réveille bien la box, mais **toute trame que le filtre du MAC
-accepte la réveille aussi** (ARP, SSDP, ping). Ce n'est pas du WoL filtré,
-c'est du « réveil sur réception ». Le comportement produit demandé est
-obtenu ; la sélectivité du magic packet, non.
+magic packet **unicast** réveille la box. Le filtre d'adresse restreint la
+veille au **unicast vers notre MAC** : broadcast et multicast sont jetés en
+veille (mesuré, §4 bis). Il n'y a pas de détection du *motif* (pas de PMT),
+donc toute trame unicast acceptée réveille — un ARP/ND unicast du routeur peut
+réveiller la box, mais plus le bruit broadcast du LAN.
 
 Coût du test : **aucun rebuild de noyau**. Seul `sunxi-gmac.ko` change, donc
 un `nixos-rebuild switch` + rechargement du module suffit (voir §4).
@@ -330,77 +333,66 @@ précédente (`/nix/var/nix/profiles/system-*-link`) et recharger le module.
 
 ## 4 bis. Mesure silicium du 2026-11-28 (`.22`, eth0 câblé, carrier=1)
 
-Verdict : **la série fait ce qu'elle annonce — et c'est inutilisable tel quel.**
+Verdict : **le chemin WoL fonctionne et il est sélectif sur l'unicast.**
 
-| Test | Résultat |
+| Test (aucune sonde pendant la veille) | Résultat |
 |---|---|
 | `Supports Wake-on` | `umbg` (l'ancien module répondait `d`) |
-| `ethtool -s eth0 wol g` puis `systemctl suspend` | `WoL armed, MAC and PHY kept powered`, reprise `WoL resume, MAC kept running` |
-| Réveil **sans envoyer aucun paquet** | **20 ms** après l'armement, `pm_wakeup_irq` = `5030000.ethernet` |
-| Réveil avec magic packet | inutile à mesurer : la boîte était déjà réveillée |
-| Témoin `wol d`, même suspend | dort 27,7 s, réveil par l'alarme RTC — le socle est sain |
+| `wol g` + `systemctl suspend` | `WoL armed, MAC and PHY kept powered`, reprise `WoL resume` |
+| 120 s sans aucun paquet | dort, `pm_wakeup_irq = 17` (RTC), `desc` inchangé |
+| 3 broadcasts « poubelle » | dort, `desc` inchangé — `DBF` effectif en veille |
+| magic packet **broadcast** ×3 | dort — normal, `DBF` le jette |
+| magic packet **unicast** ×3 | **réveil, `pm_wakeup_irq = 304` (GMAC)** |
+| témoin `wol d` | dort, réveil par l'alarme RTC — le socle est sain |
 
-Donc « réveil sur réception » n'est pas seulement non sélectif vis-à-vis des
-trames : sur un LAN vivant (ARP, RA/ND, mDNS), la boîte ne reste pas endormie.
+### 4 bis.1 Le filtre est effectif (test direct par `/dev/mem`)
 
-**Itération 2 — filtre unicast (0002, 2026-11-28) : posé, effet NON démontré.**
-Le chemin suspend sauvegarde `RX_FRM_FLT`/`INT_EN`, passe le filtre en unicast
-parfait (`DBF`, `PR`/`PM`/`RA`/`HUC`/`HMC` à 0), purge `INT_STA` et ne garde que
-`RX_INT`. Mesure après déploiement et reboot : le réveil **persiste**, ~90-270 ms
-après `WoL armed`, toujours avec `pm_wakeup_irq` = GMAC. Le compteur
-`rx_packets` n'est pas concluant : il est lu après la reprise, donc il compte
-aussi le trafic des secondes où la box était réveillée (+28 trames).
+Le noyau de la box expose `/dev/mem` sans `STRICT_DEVMEM`. En écrivant
+`RX_FRM_FLT` (0x38) = `0x00020000` (unicast parfait + `DBF`) à chaud :
+3 `arping` broadcast → **0 réponse**, ping sans entrée ARP → 100 % de perte,
+ping unicast (ARP statique) → OK à 4,5 ms. Restauré à `0x200`, ARP de nouveau
+fonctionnel. La valeur du patch est la bonne et le registre obéit.
 
-Ce qui manque pour trancher : un instantané **au moment du réveil** (première
-chose que fait un hook de reprise : `rx_packets` + `INT_STA`), ou une sonde sur
-la ligne d'IRQ. Deux hypothèses restent ouvertes :
+### 4 bis.2 Les fausses pistes (à ne pas refaire)
 
-1. le MAC accepte les trames malgré le filtre (mauvais registre, ou un bit de
-   « receive all » posé ailleurs) — le filtre serait alors un no-op ;
-2. le réveil vient d'une IRQ **déjà latchée** au moment de l'armement (la DMA
-   reçoit pendant les ~12 s que prend la mise en veille de l'ACI8800) : vider
-   `INT_STA` ne suffit pas si une trame est en cours de réception.
+1. **« Réveil 20-270 ms après l'armement, sans paquet »** : l'horloge printk
+   **se fige en s2idle** — le delta entre le print de suspend et celui de
+   resume couvre 75-120 s de sommeil réel. Et les réveils venaient des
+   **sondes de test** : un `ping`/`ssh` est une trame unicast, le filtre
+   l'accepte, la box se réveille. Sans sonde, elle dort (test des 120 s).
+2. **« Le filtre ne bloque rien »** : voir §4 bis.1, il bloque.
+3. **La capture `tcpdump`** montrait un trou de 38 s sans trame — mais le ping
+   de contrôle qui terminait ce trou était précisément la trame qui réveillait
+   la box.
 
-**Itération 3 — instrumentation noyau + capture (2026-11-28, `.22`).**
+### 4 bis.3 Bisect `INT_EN` (paramètre de module de debug)
 
-Le noyau expose `/dev/mem` sans `STRICT_DEVMEM` : on peut lire/écrire les
-registres du MAC depuis l'espace utilisateur. Trois mesures :
+Avec `INT_EN = 0` au suspend, la box dort tout le temps de l'alarme
+(`pm_wakeup_irq = 17`) et le print de reprise montre `sta = 0x40000100` (bit RX)
+avec `desc` avancé de 4 descripteurs : des trames unicast arrivent pendant la
+veille, mais sans interruption armée elles ne réveillent pas.
 
-1. **Le filtre est effectif** (test runtime, `0x38` ← `0x00020000` =
-   unicast parfait + `DBF`) : 3 `arping` broadcast → **0 réponse**, ping sans
-   entrée ARP → 100 % de perte, ping unicast avec ARP statique → OK (4,5 ms).
-   Restauré à `0x200` : ARP de nouveau fonctionnel. La valeur du patch est donc
-   la bonne et le registre obéit.
-2. **Instrumentation du chemin WoL** (patch de debug temporaire, non commité) :
-   `flt=0x00020000` avant **et** après la veille, `sta=0x40000000`,
-   `en=0x00000100`, et le pointeur `RX_CUR_DESC` avance d'un descripteur
-   (`…f90` → `…fa0`). Réveil 86-170 ms après l'armement, `pm_wakeup_irq` = GMAC.
-3. **Capture `tcpdump` sur eth0 pendant la veille** : **aucune trame** dans la
-   fenêtre (trou de 38 s entre un IGMP à +1,7 s et mon ping de contrôle). Le
-   réveil n'est donc **pas** causé par du trafic.
+### 4 bis.4 Plafond à documenter pour l'usage
 
-Conclusion : le filtre n'est pas en cause et il n'y a pas de trame. L'IRQ de
-réception du MAC est assertée **spontanément** en s2idle. Le handler passe
-avant le `resume` et purge `INT_STA`, donc on ne voit pas le bit coupable ; le
-seul bit visible, `0x40000000`, est permanent et **non effaçable** par écriture
-(il est hors du masque `0x3fff` du driver).
+- Pas de détection du motif (pas de PMT) : **toute** trame unicast acceptée
+  réveille, pas seulement le magic packet.
+- `DBF` jette le broadcast : un `wakeonlan` **broadcasté ne réveille pas** — il
+  faut l'envoyer en unicast (ARP résolu ou entrée ARP statique).
+- Sur un LAN où le routeur envoie des ARP/ND unicast, un réveil fortuit reste
+  possible : c'est le prix de l'absence de PMT.
 
-Pistes, par coût croissant :
-- bisect `INT_EN` par paramètre de module (`0x100` → `0`) : si la box dort avec
-  `INT_EN=0`, l'IRQ vient bien du MAC et il faut identifier le statut ;
-- purger/réarmer le ring RX avant d'armer (`napi_synchronize` + reset du
-  pointeur) plutôt que de le laisser tel quel ;
-- vérifier la piste PHY/link : le DTS ne déclare **qu'une** IRQ
-  (`GICv2 47 Level`), donc pas d'IRQ de PHY séparée — mais le PHY peut encore
-  être la source si l'EPHY interne tire la ligne.
+### 4 bis.5 Mesure annexe
 
-Autre mesure à ne pas perdre : l'entrée en veille a pris **46 s** une fois
-(ACI8800), contre ~1 s en temps normal — la box reste éveillée tout ce temps
-après la demande d'extinction. À surveiller pour la politique A.
+Une entrée en veille a pris **46 s** une fois (ACI8800), contre ~1 s
+d'ordinaire — la box reste éveillée pendant ce temps après la demande
+d'extinction. La mesure est prise avant le gel, donc elle est réelle. À
+surveiller pour la politique A.
 
-Tant que ce n'est pas tranché : **ne pas activer `wol g` par défaut** et ne pas
-annoncer WoL comme utilisable — la politique A (« éteindre = suspendre »)
-resterait cassée sur toute box câblée.
+### 4 bis.6 Décision
+
+Activer `wol g` par défaut sur les box câblées est **techniquement possible**
+(chemin prouvé). Ce n'est pas fait : cela transforme « éteindre » en « réveil
+sur unicast », avec le risque de réveil fortuit. À trancher avec la politique A.
 
 ## 5. Inconnues qui exigent une mesure silicium
 
