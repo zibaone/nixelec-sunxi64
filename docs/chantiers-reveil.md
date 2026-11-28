@@ -1,17 +1,18 @@
 # Réveil de la box — IR, WoL, WoWLAN
 
-État au 2026-11-23. Objet : démarrer ou réveiller une box H616/H618
-(H96 Max H618, Transpeed 8K618-T) sans débrancher le DC. Trois chemins sont
-étudiés ; aucun n'est un simple réglage, et **aucun ne réveille une box
-réellement hors tension**.
+> **État au 2026-11-28.** Trois chemins sont étudiés ; aucun ne réveille une
+> box **réellement hors tension** — c'est un fait de matériel, pas un manque de
+> patch (voir §5, « arrêt réel »). Depuis, les mesures ont avancé : le réveil
+> **IR** est validé, le **WoL** est implémenté (série `patches/kernel/sunxi-7.0-wol`,
+> verdict silicium à faire), le **WoWLAN** reste un chantier vendor non mesuré.
 
 ## Résumé
 
 | Chemin | Verdict | Ce qui bloque | Coût |
 |---|---|---|---|
-| IR (télécommande) | non aujourd'hui | vendor = faux arrêt + ARISC ; `sunxi-cir` mainline coupe l'IR en suspend ; U-Boot sans driver IR | M |
-| WoL Ethernet | non avec le driver actuel | `sunxi-gmac` : `Not support WOL` ; suspend coupe MAC/PHY | L |
-| WoWLAN (AIC8800) | **plausible** | driver et s2idle OK ; `hostwake` PG15 absent du DTS | S/M |
+| IR (télécommande) | **réveil validé** (IRQ 300, 2026-11-27) ; le CIR mainline coupe l'IR en suspend, patch `sunxi-7.0-veille` déployé | rien pour s2idle | fait |
+| WoL Ethernet | **implémenté** (2026-11-27/28, module `sunxi-gmac`) | reste le verdict silicium, cf. `wol-h96.md` §4 | L |
+| WoWLAN (AIC8800) | **plausible, non mesuré** | driver et s2idle OK ; `hostwake` PG15 absent du DTS | S/M |
 
 Les trois reposent sur un **état de veille**, pas sur un poweroff complet :
 l'AXP1530 coupe les rails à l'extinction, donc ni IR, ni PHY, ni WiFi ne
@@ -19,6 +20,13 @@ peuvent réveiller. Le vendor contourne par un super-standby (nœud
 `box_start_os` sur la Transpeed, logique boot0/ARISC sur la H96) ; le mainline
 n'a que `s2idle` (`freeze`), qui garde la SoC et les périphériques nécessaires
 alimentés.
+
+**Le super-standby n'est pas portable en mainline (mesuré 2026-11-28)** : TF-A
+2.14 refuse le SCPI sur H616 (`plat/allwinner/sun50i_h616/platform.mk` :
+`SUNXI_PSCI_USE_SCPI := 0`, `$(error "H616 does not support SCPI PSCI ops")`),
+et crust ne supporte pas le SoC (sa table s'arrête à A64/H5/H6, sans DRAM
+self-refresh). `/sys/power/mem_sleep` n'offre que `[s2idle]`. Conclusion :
+l'arrêt réel avec réveil IR relève du matériel, pas d'un chantier logiciel.
 
 ## 1. IR — le vendor fait un faux arrêt
 
@@ -60,25 +68,20 @@ gère le super-standby et le `s_cir` est `wakeup-source`. Les dumps
 `boot0.bin`/`boot1.bin` de l'archive vendor sont vides ; c'est la tête eMMC de
 la H96 qui porte le vrai boot0.
 
-**Prochaine étape** : le vendor est identifié (table + boot0/ARISC) ; il reste
-le chemin mainline : `wakeup-source` sur `&ir`, garder le bloc IR alimenté et
-`enable_irq_wake()` dans `sunxi-cir`, tester `freeze` + une touche. C'est un
-rebuild noyau aarch64. Le faux arrêt vendor (super-standby/ARISC) est un
-chantier séparé, plus lourd ; il n'est pas nécessaire si `s2idle` suffit.
+**Fait (2026-11-27)** : la série `sunxi-7.0-veille` garde le bloc IR alimenté et
+arme son IRQ ; le réveil par la touche power de la télécommande est mesuré
+(`PM: Triggering wakeup from IRQ 300`). Le faux arrêt vendor n'a pas été
+poursuivi : voir §5, il n'est pas portable en mainline sur H616.
 
-## 2. WoL Ethernet — le driver ne le fait pas
+## 2. WoL Ethernet — implémenté, verdict silicium à faire
 
-Le driver porté `packages/sunxi-gmac/src/sunxi-gmac.c` :
-
-- `get_wol`/`set_wol` : `TODO: need to support wol`, `Not support WOL` ;
-- `sunxi_gmac_suspend()` : `sunxi_gmac_power_off()` + `clk_disable()`.
-
-Donc le MAC/PHY est éteint en suspend ; aucun magic packet n'est reçu. Le
-PHY AC300 tire son horloge 24 MHz de PWM5 ; il faut garder la PHY, son
-horloge et son rail alimentés, programmer le PMT/magic packet du MAC et
-armer l'IRQ de wake. C'est une fonctionnalité du port gmac (P2), pas un
-réglage. Sur la H96, `eth0` est sans porteuse (WiFi only) : il faut aussi
-rebrancher le câble.
+Le driver porté `packages/sunxi-gmac/src/sunxi-gmac.c` avait des stubs
+(`Not support WOL`) et son suspend coupait MAC/PHY. La série
+`patches/kernel/sunxi-7.0-wol/` (appliquée au module, pas au noyau) rend
+`ethtool -s eth0 wol g` effectif et garde MAC/RX ring/PHY vivants en s2idle
+quand `wol` est armé. Le MAC n'a **pas** de filtre magic-packet : toute trame
+acceptée par le filtre d'adresse réveille (ARP, SSDP, ping). Protocole de test
+et pièges : `wol-h96.md` §4. Coût : `sunxi-gmac.ko` seulement.
 
 ## 3. WoWLAN (AIC8800) — le plus proche
 
@@ -107,9 +110,26 @@ petit patch DTS/PM, pas un port de driver.
 
 ## 4. Ordre conseillé
 
-1. **WoWLAN** : test `freeze` + magic packet, puis DTS `hostwake` (S/M).
-2. **IR** : DTB vendor H96, puis spike `sunxi-cir` + `freeze` (M).
-3. **WoL** : pendant le port gmac, PMT + PHY/PWM5 + wake IRQ (L).
+1. **WoL** : verdict silicium sur `.22` (eth0 câblé, carrier=1) — série
+   mergée, coût `sunxi-gmac.ko`.
+2. **WoWLAN** : test `freeze` + magic packet, puis DTS `hostwake` (S/M) —
+   non mesuré, deux inconnues bloquantes (§10 de `wowlan-h96.md`).
+3. **IR** : fait (§1).
+
+## 5. Arrêt réel (rails coupés) — impossible en mainline
+
+« Réveil depuis complètement éteint » n'est pas une option de configuration :
+depuis un `poweroff`, ni le CIR, ni le PHY, ni le SDIO ne sont alimentés, et
+seul le bouton PWRON de l'AXP redémarre la carte (mesuré 2026-11-26). Le vendor
+contourne par un super-standby piloté par boot0 + ARISC (binaires fermés).
+
+Ce chemin **n'est pas portable en mainline sur H616** : TF-A 2.14 refuse le
+SCPI (`plat/allwinner/sun50i_h616/platform.mk` : `SUNXI_PSCI_USE_SCPI := 0`,
+`$(error "H616 does not support SCPI PSCI ops")`), et crust ne supporte pas le
+SoC (A64/H5/H6 seulement, sans DRAM self-refresh). `/sys/power/mem_sleep` ne
+propose que `[s2idle]`, ce qui confirme que le firmware ne publie pas
+`SYSTEM_SUSPEND`. Un vrai 0 W relève du matériel (MCU always-on, prise
+pilotée), pas d'un chantier logiciel.
 
 ## Références
 
